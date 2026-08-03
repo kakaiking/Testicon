@@ -1,0 +1,5 @@
+public/internal-app
+prisma/*.db
+prisma/*.db-journal
+.env
+.env.local
