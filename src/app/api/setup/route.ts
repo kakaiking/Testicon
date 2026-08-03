@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { execSync } from "node:child_process";
+import { createClient } from "@libsql/client/web";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) {
+  const url = process.env.TURSO_DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+
+  if (!url || !authToken) {
     return NextResponse.json(
       { error: "TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set" },
       { status: 503 },
@@ -20,13 +24,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    execSync("npx prisma db push --skip-generate", {
-      env: {
-        ...process.env,
-        DATABASE_URL: process.env.TURSO_DATABASE_URL,
-      },
-      stdio: "pipe",
-    });
+    const sql = execSync(
+      "npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script",
+      { encoding: "utf8" },
+    );
+
+    const client = createClient({ url, authToken });
+    await client.executeMultiple(sql);
 
     const adminEmail = (process.env.ADMIN_EMAILS || "admin@hackstreetboys.com")
       .split(",")[0]
