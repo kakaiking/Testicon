@@ -12,6 +12,7 @@
     "db:seed": "npx tsx prisma/seed.ts",
     "db:setup": "prisma db push && npx tsx prisma/seed.ts",
     "db:setup:turso": "npx tsx scripts/push-schema-turso.ts && npx tsx prisma/seed.ts",
+    "migrate:production": "npx tsx scripts/migrate-local-to-turso.ts",
     "deploy:vercel": "bash scripts/deploy-vercel.sh"
   },
   "dependencies": {
