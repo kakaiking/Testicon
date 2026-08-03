@@ -32,9 +32,44 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ### Vercel (recommended)
 
+**Live:** [https://testicon-zeta.vercel.app](https://testicon-zeta.vercel.app)
+
 Vercel cannot persist local SQLite or disk uploads. Production uses **Turso** (database) and **Vercel Blob** (icons & screenshots). Local dev still uses `file:./dev.db` and `public/uploads/`.
 
-#### 1. Turso database
+#### Finish database setup (one-time)
+
+Turso requires accepting Vercel marketplace terms in a browser (cannot be automated):
+
+1. Open [Accept Turso terms](https://vercel.com/tomalvin926-3808s-projects/~/integrations/accept-terms/tursocloud?source=cli) while logged into Vercel
+2. Run from the project root:
+
+```bash
+npm run deploy:vercel
+```
+
+This provisions the Turso database, pushes the schema, seeds admin data, and redeploys.
+
+Or manually:
+
+```bash
+vercel integration add tursocloud/database --name testicon-db --plan starter -m region=iad1 -e production -e preview
+vercel env pull .env.production.local --environment=production --yes
+source .env.production.local
+DATABASE_URL="$TURSO_DATABASE_URL" npm run db:setup
+curl -X POST https://testicon-zeta.vercel.app/api/setup -H "x-setup-secret: YOUR_SETUP_SECRET"
+vercel deploy --prod --yes
+```
+
+#### Initial Vercel setup (already done)
+
+1. Project linked: `tomalvin926-3808s-projects/testicon`
+2. Blob store: `testicon-blob` (public)
+3. Env vars set: `JWT_SECRET`, `ADMIN_EMAILS`, `EMAILJS_*`, `APP_URL`, `BLOB_READ_WRITE_TOKEN`, `SETUP_SECRET`
+4. GitHub repo: [github.com/kakaiking/Testicon](https://github.com/kakaiking/Testicon)
+
+Sign in at `/admin/login` with `kakaiphil@gmail.com` after database setup completes.
+
+#### Local Turso alternative
 
 ```bash
 # Install Turso CLI: https://docs.turso.tech/cli
@@ -51,24 +86,6 @@ export TURSO_AUTH_TOKEN="..."
 export DATABASE_URL="$TURSO_DATABASE_URL"
 npm run db:setup
 ```
-
-#### 2. Vercel project
-
-1. Push to [github.com/kakaiking/Testicon](https://github.com/kakaiking/Testicon)
-2. [Import the repo in Vercel](https://vercel.com/new) — framework is auto-detected (Next.js)
-3. In **Storage**, create a **Blob** store and connect it to the project (`BLOB_READ_WRITE_TOKEN` is set automatically)
-4. Add environment variables:
-
-| Variable | Value |
-|----------|-------|
-| `TURSO_DATABASE_URL` | From `turso db show testicon --url` |
-| `TURSO_AUTH_TOKEN` | From `turso db tokens create testicon` |
-| `JWT_SECRET` | Random secret string |
-| `ADMIN_EMAILS` | Your admin email(s) |
-| `APP_URL` | Optional — defaults to `https://<your-project>.vercel.app` |
-| `EMAILJS_*` | Optional — invitation emails |
-
-5. Deploy. Sign in at `/admin/login` with an email in `ADMIN_EMAILS`.
 
 CI runs on every push via `.github/workflows/ci.yml`.
 
