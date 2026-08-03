@@ -43,11 +43,18 @@ export async function POST(request: Request) {
       inviteUrl,
       inviterEmail: admin.email,
       expiresIn: getInvitationExpiryText(),
+    }).catch((err) => {
+      console.error("Invitation email failed:", err);
+      return { preview: true, emailError: true as const };
     });
 
     return NextResponse.json(
-      { ...invitation, emailPreview: emailResult.preview },
-      { status: 201 }
+      {
+        ...invitation,
+        emailPreview: emailResult.preview,
+        emailError: "emailError" in emailResult ? true : undefined,
+      },
+      { status: 201 },
     );
   } catch (err) {
     console.error(err);

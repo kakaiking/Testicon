@@ -74,7 +74,16 @@ export function isAdminEmail(email: string): boolean {
 export async function requireSession(): Promise<SessionUser> {
   const session = await getSession();
   if (!session) throw new Error("Unauthorized");
-  return session;
+
+  const user = await prisma.user.findUnique({ where: { email: session.email } });
+  if (!user) throw new Error("Unauthorized");
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role as Role,
+  };
 }
 
 export async function requireAdmin(): Promise<SessionUser> {
