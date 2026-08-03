@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { TesterShell } from "@/components/Shell";
 import Link from "next/link";
-import { isAppActive, htmlToPlainText } from "@/lib/utils";
+import { isAppActive, htmlToPlainText, formatAppStatus } from "@/lib/utils";
 
 export default async function PortalPage() {
   const session = await getSession();
@@ -19,8 +19,9 @@ export default async function PortalPage() {
     <TesterShell user={session} title="My Test Apps">
       <div className="grid nav:grid-cols-2 gap-4 nav:gap-6 max-w-6xl mx-auto">
         {enrollments.map(({ testApp, status }) => {
-          const active = isAppActive(testApp.startDate, testApp.endDate);
-          const canLaunch = status === "ACTIVE" && active && testApp.status === "ACTIVE";
+          const inTestWindow = isAppActive(testApp.startDate, testApp.endDate);
+          const appIsLive = testApp.status === "ACTIVE";
+          const canLaunch = status === "ACTIVE" && inTestWindow && appIsLive;
 
           return (
             <div key={testApp.id} className="glass-card p-4 nav:p-6">
@@ -35,13 +36,27 @@ export default async function PortalPage() {
                 </div>
                 <div>
                   <h3 className="font-heading font-semibold">{testApp.name}</h3>
-                  <span className={`badge badge-${status === "ACTIVE" ? "active" : "pending"} text-xs`}>{status.replace(/_/g, " ")}</span>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <span className={`badge badge-${status === "ACTIVE" ? "active" : "pending"} text-xs`}>
+                      {status.replace(/_/g, " ")}
+                    </span>
+                    {status === "ACTIVE" && !appIsLive && (
+                      <span className="badge badge-pending text-xs">{formatAppStatus(testApp.status)}</span>
+                    )}
+                  </div>
                 </div>
               </div>
               <p className="text-sm text-[var(--text-muted)] line-clamp-2 mb-4">{htmlToPlainText(testApp.description ?? "")}</p>
-              {!active && (
+              {status === "ACTIVE" && !inTestWindow && (
                 <p className="text-xs text-[var(--accent-warning)] mb-3">
                   Test window: {testApp.startDate.toLocaleDateString()} – {testApp.endDate.toLocaleDateString()}
+                </p>
+              )}
+              {status === "ACTIVE" && inTestWindow && !appIsLive && (
+                <p className="text-xs text-[var(--accent-warning)] mb-3">
+                  {testApp.status === "CLOSED"
+                    ? "This test has ended."
+                    : "The app is not live yet. An admin must mark it as launched before you can test."}
                 </p>
               )}
               {canLaunch ? (
@@ -54,7 +69,11 @@ export default async function PortalPage() {
                 </Link>
               ) : (
                 <button disabled className="btn-primary w-full opacity-50 cursor-not-allowed">
-                  Unavailable
+                  {testApp.status === "CLOSED"
+                    ? "Test Closed"
+                    : !inTestWindow
+                      ? "Outside Test Window"
+                      : "Not Live Yet"}
                 </button>
               )}
             </div>

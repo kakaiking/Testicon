@@ -77,7 +77,7 @@ function ShellDrawer({
           onClick={onClose}
         />
       )}
-      <aside className={`shell-drawer ${open ? "shell-drawer-open" : ""}`}>
+      <aside className={`shell-drawer shell-drawer-persistent ${open ? "shell-drawer-open" : ""}`}>
         <div className="p-4 nav:p-6 border-b border-[var(--border-color)] flex items-center justify-between">
           <Link href={brandHref} className="flex items-center gap-2 min-w-0" onClick={onClose}>
             <span className="text-2xl shrink-0">🧪</span>

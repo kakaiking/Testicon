@@ -240,14 +240,19 @@ select.input-field {
   transform: translateX(0);
 }
 
+/* Admin sidebar: persistent on desktop. Tester mobile drawer must NOT use this class. */
 @media (min-width: 43.75rem) {
-  .shell-drawer {
+  .shell-drawer-persistent {
     position: static;
     z-index: auto;
     width: 16rem;
     flex-shrink: 0;
     transform: none;
     transition: none;
+  }
+
+  .shell-drawer:not(.shell-drawer-persistent) {
+    display: none;
   }
 }
 
