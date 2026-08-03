@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +40,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local dev symlink to Internal-App
+public/internal-app
+
+prisma/*.db
+prisma/*.db-journal
+
+# uploaded app icons
+/public/uploads/icons/*
+!/public/uploads/icons/.gitkeep
+
+# issue screenshots
+/public/uploads/screenshots/*
+!/public/uploads/screenshots/.gitkeep
+
+/src/generated/prisma
+public/internal-app

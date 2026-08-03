@@ -1,0 +1,115 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      String   @default("TESTER") // ADMIN | TESTER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enrollments TesterEnrollment[]
+  issues      Issue[]
+  rewards     Reward[]
+  invitations Invitation[] @relation("InvitedBy")
+}
+
+model TestApp {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  iconUrl         String?
+  launchUrl       String
+  internalAppId   Int?
+  ndaText         String   @default("")
+  termsText       String   @default("")
+  startDate       DateTime
+  endDate         DateTime
+  rewardLow       Float    @default(5)
+  rewardMedium    Float    @default(15)
+  rewardHigh      Float    @default(50)
+  rewardCritical  Float    @default(100)
+  status          String   @default("DRAFT") // DRAFT | ACTIVE | CLOSED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  enrollments TesterEnrollment[]
+  invitations Invitation[]
+  issues      Issue[]
+}
+
+model Invitation {
+  id         String    @id @default(cuid())
+  email      String
+  token      String    @unique
+  testAppId  String
+  status     String    @default("PENDING") // PENDING | ACCEPTED | EXPIRED | REVOKED
+  invitedBy  String
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  testApp TestApp @relation(fields: [testAppId], references: [id], onDelete: Cascade)
+  inviter User    @relation("InvitedBy", fields: [invitedBy], references: [id])
+}
+
+model TesterEnrollment {
+  id                String    @id @default(cuid())
+  userId            String
+  testAppId         String
+  ndaAcceptedAt     DateTime?
+  termsAcceptedAt   DateTime?
+  understandingText String?
+  status            String    @default("INVITED") // INVITED | REGISTERED | NDA_SIGNED | UNDERSTANDING_SUBMITTED | ACTIVE
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testApp TestApp @relation(fields: [testAppId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, testAppId])
+}
+
+model Issue {
+  id              String    @id @default(cuid())
+  userId          String
+  testAppId       String
+  title           String
+  description     String
+  severity        String    @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  screenshotUrl   String?
+  status          String    @default("OPEN") // OPEN | REVIEWING | APPROVED | REJECTED | RESOLVED
+  rewardAmount    Float?
+  internalSyncedAt DateTime?
+  internalIssueId Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testApp TestApp @relation(fields: [testAppId], references: [id], onDelete: Cascade)
+  rewards Reward[]
+}
+
+model Reward {
+  id          String   @id @default(cuid())
+  userId      String
+  issueId     String?
+  amount      Float
+  type        String // CREDIT | WITHDRAWAL
+  status      String   @default("PENDING") // PENDING | APPROVED | PAID | REJECTED
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issue Issue? @relation(fields: [issueId], references: [id])
+}

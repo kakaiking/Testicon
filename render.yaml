@@ -1,0 +1,37 @@
+# Deploy Testicon from GitHub: https://dashboard.render.com/select-repo
+# Connect repo kakaiking/Testicon, then apply this Blueprint.
+services:
+  - type: web
+    name: testicon
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npx prisma db push && npx tsx prisma/seed.ts && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        value: file:/var/data/dev.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: EMAILJS_SERVICE_ID
+        sync: false
+      - key: EMAILJS_TEMPLATE_ID
+        sync: false
+      - key: EMAILJS_PUBLIC_KEY
+        sync: false
+      - key: EMAILJS_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_API_KEY
+        sync: false
+    disk:
+      name: testicon-data
+      mountPath: /var/data
+      sizeGB: 1
