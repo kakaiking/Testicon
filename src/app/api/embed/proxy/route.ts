@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { injectEmbedSupport, inlineLaunchStylesheets, resolveProxiedTargetUrl } from "@/lib/embed-proxy";
+import { isPrivateNetworkUrl } from "@/lib/private-network";
 import { isAppActive } from "@/lib/utils";
 
 export async function GET(req: Request) {
@@ -28,8 +29,21 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "App unavailable" }, { status: 403 });
     }
 
+    if (isPrivateNetworkUrl(app.launchUrl)) {
+      return NextResponse.json({ error: "Private network launch URLs are not allowed" }, { status: 400 });
+    }
+
     const path = searchParams.get("path");
-    const targetUrl = resolveProxiedTargetUrl(app.launchUrl, path);
+    let targetUrl: string;
+    try {
+      targetUrl = resolveProxiedTargetUrl(app.launchUrl, path);
+    } catch {
+      return NextResponse.json({ error: "Blocked private network target" }, { status: 400 });
+    }
+
+    if (isPrivateNetworkUrl(targetUrl)) {
+      return NextResponse.json({ error: "Blocked private network target" }, { status: 400 });
+    }
 
     const upstream = await fetch(targetUrl, { redirect: "follow" });
 

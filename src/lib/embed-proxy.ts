@@ -1,3 +1,5 @@
+import { isPrivateNetworkUrl, PRIVATE_NETWORK_CHECK_JS } from "@/lib/private-network";
+
 export function baseHrefForLaunchUrl(launchUrl: string): string {
   const url = new URL(launchUrl);
   const dir = url.pathname.endsWith("/")
@@ -8,7 +10,12 @@ export function baseHrefForLaunchUrl(launchUrl: string): string {
 
 /** Base href for the currently proxied document (submodules live in nested dirs). */
 export function baseHrefForProxiedPath(launchUrl: string, path: string | null): string {
-  const targetUrl = resolveProxiedTargetUrl(launchUrl, path);
+  let targetUrl = launchUrl;
+  try {
+    targetUrl = resolveProxiedTargetUrl(launchUrl, path);
+  } catch {
+    targetUrl = launchUrl;
+  }
   const url = new URL(targetUrl);
   const dir = url.pathname.endsWith("/")
     ? url.pathname
@@ -24,7 +31,11 @@ export function buildProxyUrl(testiconOrigin: string, testAppId: string, path?: 
 
 export function resolveProxiedTargetUrl(launchUrl: string, path: string | null): string {
   if (!path) return launchUrl;
-  return new URL(path, baseHrefForLaunchUrl(launchUrl)).href;
+  const resolved = new URL(path, baseHrefForLaunchUrl(launchUrl)).href;
+  if (isPrivateNetworkUrl(resolved)) {
+    throw new Error("Blocked private network target");
+  }
+  return resolved;
 }
 
 function proxiedRelativePath(launchUrl: string, resolvedAbsoluteUrl: string): string | null {
@@ -48,7 +59,6 @@ function proxiedRelativePath(launchUrl: string, resolvedAbsoluteUrl: string): st
 const TESTICON_OWNED_PATH_PREFIXES = [
   "/api/embed/",
   "/embed-sdk.js",
-  "/modern-screenshot.js",
 ];
 
 export function isTesticonOwnedPath(pathname: string): boolean {
@@ -66,6 +76,8 @@ export function resolveEmbeddedAbsoluteUrl(
   }
 
   try {
+    if (isPrivateNetworkUrl(absoluteOrRelativeUrl)) return null;
+
     const launchOrigin = new URL(launchUrl).origin;
     let resolved: string;
 
@@ -77,6 +89,8 @@ export function resolveEmbeddedAbsoluteUrl(
       const resolveBase = documentBaseHref || baseHrefForLaunchUrl(launchUrl);
       resolved = new URL(absoluteOrRelativeUrl, resolveBase).href;
     }
+
+    if (isPrivateNetworkUrl(resolved)) return null;
 
     if (proxyOrigin && resolved.startsWith(proxyOrigin)) {
       const path = resolved.slice(proxyOrigin.length);
@@ -107,6 +121,7 @@ function rewriteCssUrls(css: string, cssBaseUrl: string): string {
     if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) return match;
     try {
       const absolute = new URL(trimmed, cssBaseUrl).href;
+      if (isPrivateNetworkUrl(absolute)) return `url(${quote}${quote})`;
       return `url(${quote}${absolute}${quote})`;
     } catch {
       return match;
@@ -121,6 +136,7 @@ export function rewriteIframeSrcInHtml(
   documentBaseHref?: string
 ): string {
   return html.replace(/<iframe\b([^>]*)\bsrc=["']([^"']*)["']/gi, (match, attrs, src) => {
+    if (isPrivateNetworkUrl(src)) return `<iframe${attrs}src="about:blank"`;
     const path = toProxiedPath(launchUrl, src, documentBaseHref);
     if (!path) return match;
     const newSrc = `${proxyBase}&path=${encodeURIComponent(path)}`;
@@ -136,6 +152,7 @@ function rewriteTaggedUrlsInHtml(
   tagPattern: RegExp
 ): string {
   return html.replace(tagPattern, (match, prefix, src, suffix) => {
+    if (isPrivateNetworkUrl(src)) return `${prefix}${suffix}`;
     const path = toProxiedPath(launchUrl, src, documentBaseHref);
     if (!path) return match;
     const newSrc = `${proxyBase}&path=${encodeURIComponent(path)}`;
@@ -190,6 +207,8 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
 
   var TESTICON_OWNED = ${JSON.stringify(TESTICON_OWNED_PATH_PREFIXES)};
 
+  ${PRIVATE_NETWORK_CHECK_JS}
+
   function isTesticonOwnedPath(pathname) {
     for (var i = 0; i < TESTICON_OWNED.length; i++) {
       if (pathname.indexOf(TESTICON_OWNED[i]) === 0) return true;
@@ -199,6 +218,7 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
 
   function resolveEmbeddedAbsoluteUrl(url) {
     if (!url || url.indexOf("data:") === 0 || url.indexOf("blob:") === 0) return null;
+    if (isPrivateNetworkUrl(url)) return null;
     try {
       var resolved;
       if (url.indexOf("http://") === 0 || url.indexOf("https://") === 0) {
@@ -208,6 +228,7 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
       } else {
         resolved = new URL(url, document.baseURI || LAUNCH_BASE).href;
       }
+      if (isPrivateNetworkUrl(resolved)) return null;
       var proxyOrigin = window.location.origin;
       if (resolved.indexOf(proxyOrigin) === 0) {
         var path = resolved.slice(proxyOrigin.length);
@@ -237,9 +258,16 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
     }
   }
 
+  /** Returns proxied URL, original public URL, or null when private/local (skip — never prompt LNA). */
   function proxyUrl(url) {
+    if (isPrivateNetworkUrl(url)) return null;
     var path = toProxiedPath(url);
     return path ? PROXY_BASE + "&path=" + encodeURIComponent(path) : url;
+  }
+
+  function safeUrl(url, fallback) {
+    var proxied = proxyUrl(url);
+    return proxied === null ? (fallback || "") : proxied;
   }
 
   function applyTesticonSession(ctx) {
@@ -273,7 +301,9 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
       var original = locProto[method];
       if (!original) return;
       locProto[method] = function (url) {
-        return original.call(this, proxyUrl(String(url)));
+        var next = safeUrl(String(url), "about:blank");
+        if (!next || next === "about:blank") return;
+        return original.call(this, next);
       };
     });
 
@@ -282,7 +312,9 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
       Object.defineProperty(locProto, "href", {
         get: hrefDesc.get,
         set: function (val) {
-          hrefDesc.set.call(this, proxyUrl(String(val)));
+          var next = safeUrl(String(val), "");
+          if (!next) return;
+          hrefDesc.set.call(this, next);
         },
         configurable: true,
       });
@@ -298,7 +330,7 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
     Object.defineProperty(proto, attr, {
       get: desc.get,
       set: function (val) {
-        desc.set.call(this, proxyUrl(String(val)));
+        desc.set.call(this, safeUrl(String(val), ""));
       },
       configurable: true,
     });
@@ -316,8 +348,11 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
               : input && input.url
                 ? input.url
                 : String(input);
+        if (isPrivateNetworkUrl(url)) {
+          return Promise.reject(new TypeError("Blocked private network request"));
+        }
         var proxied = proxyUrl(url);
-        if (proxied !== url) {
+        if (proxied !== null && proxied !== url) {
           if (typeof input === "string" || input instanceof URL) return origFetch(proxied, init);
           return origFetch(new Request(proxied, input), init);
         }
@@ -329,19 +364,27 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
     XMLHttpRequest.prototype.open = function (method, url) {
       var args = Array.prototype.slice.call(arguments);
       if (typeof url === "string") {
-        var proxied = proxyUrl(url);
-        if (proxied !== url) args[1] = proxied;
+        if (isPrivateNetworkUrl(url)) {
+          args[1] = "about:blank";
+        } else {
+          var proxied = proxyUrl(url);
+          if (proxied !== null && proxied !== url) args[1] = proxied;
+        }
       }
       return origOpen.apply(this, args);
     };
 
     patchElementAttr(HTMLScriptElement.prototype, "src");
     patchElementAttr(HTMLLinkElement.prototype, "href");
+    patchElementAttr(HTMLImageElement.prototype, "src");
+    if (typeof HTMLSourceElement !== "undefined") patchElementAttr(HTMLSourceElement.prototype, "src");
+    if (typeof HTMLVideoElement !== "undefined") patchElementAttr(HTMLVideoElement.prototype, "src");
+    if (typeof HTMLAudioElement !== "undefined") patchElementAttr(HTMLAudioElement.prototype, "src");
 
     var origSetAttribute = Element.prototype.setAttribute;
     Element.prototype.setAttribute = function (name, value) {
       var attr = String(name).toLowerCase();
-      if (attr === "src" || attr === "href") value = proxyUrl(String(value));
+      if (attr === "src" || attr === "href") value = safeUrl(String(value), "");
       return origSetAttribute.call(this, name, value);
     };
   }
@@ -380,6 +423,8 @@ export function buildIframeHookScript(launchUrl: string, proxyBase: string): str
 
   var TESTICON_OWNED = ${JSON.stringify(TESTICON_OWNED_PATH_PREFIXES)};
 
+  ${PRIVATE_NETWORK_CHECK_JS}
+
   function isTesticonOwnedPath(pathname) {
     for (var i = 0; i < TESTICON_OWNED.length; i++) {
       if (pathname.indexOf(TESTICON_OWNED[i]) === 0) return true;
@@ -389,6 +434,7 @@ export function buildIframeHookScript(launchUrl: string, proxyBase: string): str
 
   function resolveEmbeddedAbsoluteUrl(url) {
     if (!url || url.indexOf("data:") === 0 || url.indexOf("blob:") === 0) return null;
+    if (isPrivateNetworkUrl(url)) return null;
     try {
       var resolved;
       if (url.indexOf("http://") === 0 || url.indexOf("https://") === 0) {
@@ -398,6 +444,7 @@ export function buildIframeHookScript(launchUrl: string, proxyBase: string): str
       } else {
         resolved = new URL(url, document.baseURI || LAUNCH_BASE).href;
       }
+      if (isPrivateNetworkUrl(resolved)) return null;
       var proxyOrigin = window.location.origin;
       if (resolved.indexOf(proxyOrigin) === 0) {
         var path = resolved.slice(proxyOrigin.length);
@@ -428,8 +475,14 @@ export function buildIframeHookScript(launchUrl: string, proxyBase: string): str
   }
 
   function proxyUrl(url) {
+    if (isPrivateNetworkUrl(url)) return null;
     var path = toProxiedPath(url);
     return path ? PROXY_BASE + "&path=" + encodeURIComponent(path) : url;
+  }
+
+  function safeUrl(url, fallback) {
+    var proxied = proxyUrl(url);
+    return proxied === null ? (fallback || "about:blank") : proxied;
   }
 
   function hookIframe(iframe) {
@@ -443,7 +496,7 @@ export function buildIframeHookScript(launchUrl: string, proxyBase: string): str
           return desc.get.call(this);
         },
         set: function (val) {
-          desc.set.call(this, proxyUrl(val));
+          desc.set.call(this, safeUrl(val, "about:blank"));
         },
         configurable: true,
       });
@@ -451,13 +504,13 @@ export function buildIframeHookScript(launchUrl: string, proxyBase: string): str
 
     var origSetAttribute = iframe.setAttribute.bind(iframe);
     iframe.setAttribute = function (name, value) {
-      if (String(name).toLowerCase() === "src") value = proxyUrl(value);
+      if (String(name).toLowerCase() === "src") value = safeUrl(value, "about:blank");
       return origSetAttribute(name, value);
     };
 
     var current = iframe.getAttribute("src");
     if (current) {
-      var proxied = proxyUrl(current);
+      var proxied = safeUrl(current, "about:blank");
       if (proxied !== current) origSetAttribute("src", proxied);
     }
   }
@@ -499,8 +552,7 @@ export function injectEmbedSupport(
     buildEmbedBootstrapScript(launchUrl, proxyBase),
     buildIframeHookScript(launchUrl, proxyBase),
     inlinedStyles,
-    `<script src="${testiconOrigin}/modern-screenshot.js?v=2"></script>`,
-    `<script src="${testiconOrigin}/embed-sdk.js?v=16"></script>`,
+    `<script src="${testiconOrigin}/embed-sdk.js?v=17"></script>`,
   ].join("");
 
   let processed = html.replace(/<base\b[^>]*>/i, "");
@@ -538,6 +590,7 @@ export async function inlineLaunchStylesheets(
 
     try {
       const cssUrl = new URL(href, baseHref).href;
+      if (isPrivateNetworkUrl(cssUrl)) continue;
       const response = await fetch(cssUrl, { headers: { Accept: "text/css,*/*" } });
       if (!response.ok) continue;
       const css = rewriteCssUrls(await response.text(), cssUrl);

@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import IconUpload from "@/components/IconUpload";
+import LaunchUrlInput from "@/components/LaunchUrlInput";
 import RichTextEditor from "@/components/RichTextEditor";
+import { normalizeLaunchUrl } from "@/lib/launch-url";
 
 export default function NewAppPage() {
   const [loading, setLoading] = useState(false);
@@ -26,12 +28,17 @@ export default function NewAppPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const launchUrl = normalizeLaunchUrl(form.launchUrl);
+    if (!launchUrl) {
+      alert("Enter a valid launch URL (e.g. app.example.com)");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/admin/apps", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, launchUrl }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -78,7 +85,11 @@ export default function NewAppPage() {
             </div>
             <div>
               <label className="label">Launch URL</label>
-              <input className="input-field" value={form.launchUrl} onChange={(e) => update("launchUrl", e.target.value)} required placeholder="https://..." />
+              <LaunchUrlInput
+                value={form.launchUrl}
+                onChange={(url) => update("launchUrl", url)}
+                required
+              />
             </div>
           </div>
           <div>

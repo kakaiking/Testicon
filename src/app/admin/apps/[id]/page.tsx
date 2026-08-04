@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import IconUpload from "@/components/IconUpload";
+import LaunchUrlInput from "@/components/LaunchUrlInput";
+import { normalizeLaunchUrl } from "@/lib/launch-url";
 
 type App = {
   id: string;
@@ -50,11 +52,16 @@ export default function EditAppPage({ params }: { params: Promise<{ id: string }
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!form) return;
+    const launchUrl = normalizeLaunchUrl(form.launchUrl);
+    if (!launchUrl) {
+      alert("Enter a valid launch URL (e.g. app.example.com)");
+      return;
+    }
     setSaving(true);
     await fetch(`/api/admin/apps/${appId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, launchUrl }),
     });
     setSaving(false);
   }
@@ -86,7 +93,11 @@ export default function EditAppPage({ params }: { params: Promise<{ id: string }
           </div>
           <div>
             <label className="label">Launch URL</label>
-            <input className="input-field" value={form.launchUrl} onChange={(e) => update("launchUrl", e.target.value)} />
+            <LaunchUrlInput
+              value={form.launchUrl}
+              onChange={(url) => update("launchUrl", url)}
+              required
+            />
           </div>
           <div>
             <label className="label">Internal-App ID</label>

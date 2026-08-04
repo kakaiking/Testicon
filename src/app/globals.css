@@ -118,6 +118,43 @@ body {
   border-color: var(--accent);
 }
 
+.input-with-prefix {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.input-with-prefix:focus-within {
+  border-color: var(--accent);
+}
+
+.input-prefix {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 0 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  user-select: none;
+}
+
+.input-field-prefixed {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding-left: 0;
+}
+
+.input-field-prefixed:focus {
+  border-color: transparent;
+}
+
 .input-field::placeholder {
   color: var(--text-muted);
 }

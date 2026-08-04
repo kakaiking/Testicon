@@ -63,8 +63,6 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
   const [severity, setSeverity] = useState("");
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [screenshotError, setScreenshotError] = useState<string | null>(null);
-  const [capturingScreenshot, setCapturingScreenshot] = useState(false);
-  const [preparingReport, setPreparingReport] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -76,21 +74,12 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
   const bridge = useEmbedBridge(appId, proxySrc);
   const {
     bindLaunchData,
-    requestScreenshot,
     iframeRef,
     loggedOut,
     onIframeLoad,
     clearLoggedOut,
     resetSdkReady,
   } = bridge;
-
-  useEffect(() => {
-    if (document.getElementById("testicon-ms-preload")) return;
-    const script = document.createElement("script");
-    script.id = "testicon-ms-preload";
-    script.src = "/modern-screenshot.js?v=2";
-    document.head.appendChild(script);
-  }, []);
 
   useEffect(() => {
     params.then(async ({ id }) => {
@@ -197,10 +186,8 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
       setShowReportForm(true);
       setScreenshot(null);
       setScreenshotError(
-        "Test in the new tab, then upload/paste a screenshot here — or submit without one."
+        "Take a screenshot in the app tab, then upload or paste it here — or submit without one."
       );
-      setCapturingScreenshot(false);
-      setPreparingReport(false);
     },
     [launchData]
   );
@@ -208,17 +195,6 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
   const openExternally = useCallback(() => {
     openInNewTabAndReport(launchData?.app.launchUrl);
   }, [launchData, openInNewTabAndReport]);
-
-  const applyCaptureResult = useCallback((result: { dataUrl: string | null; error: string | null }) => {
-    if (result.dataUrl) {
-      setScreenshot(result.dataUrl);
-      setScreenshotError(null);
-    } else {
-      setScreenshot(null);
-      setScreenshotError(result.error || "Screenshot capture failed.");
-    }
-    setCapturingScreenshot(false);
-  }, []);
 
   const readFileAsDataUrl = useCallback((file: File) => {
     return new Promise<string>((resolve, reject) => {
@@ -248,53 +224,19 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
 
   const openReportModal = useCallback(() => {
     setScreenshot(null);
-    setScreenshotError(null);
+    setScreenshotError(
+      phase === "report"
+        ? "Take a screenshot in the app tab, then upload or paste it here — or submit without one."
+        : "Take a screenshot of the app, then upload or paste it here — or submit without one."
+    );
     setShowReportForm(true);
     setMenuOpen(false);
-
-    if (phase === "report") {
-      setCapturingScreenshot(false);
-      setPreparingReport(false);
-      setScreenshotError(
-        "Test in the new tab, then upload/paste a screenshot here — or submit without one."
-      );
-      return;
-    }
-
-    setPreparingReport(true);
-    setCapturingScreenshot(true);
-    void requestScreenshot()
-      .then(applyCaptureResult)
-      .catch((err: unknown) => {
-        console.error("[Testicon] Screenshot capture error:", err);
-        applyCaptureResult({
-          dataUrl: null,
-          error: err instanceof Error ? err.message : "Screenshot capture failed unexpectedly.",
-        });
-      })
-      .finally(() => setPreparingReport(false));
-  }, [phase, requestScreenshot, applyCaptureResult]);
-
-  const retryScreenshot = useCallback(() => {
-    setScreenshot(null);
-    setScreenshotError(null);
-    setCapturingScreenshot(true);
-    void requestScreenshot()
-      .then(applyCaptureResult)
-      .catch((err: unknown) => {
-        console.error("[Testicon] Screenshot retry error:", err);
-        applyCaptureResult({
-          dataUrl: null,
-          error: err instanceof Error ? err.message : "Screenshot capture failed unexpectedly.",
-        });
-      });
-  }, [requestScreenshot, applyCaptureResult]);
+  }, [phase]);
 
   function closeReportForm() {
     setShowReportForm(false);
     setScreenshot(null);
     setScreenshotError(null);
-    setCapturingScreenshot(false);
     setTitle("");
     setDescription("");
     setSeverity("");
@@ -458,7 +400,7 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
                     >
                       <LogIn size={14} /> Sign-in help
                     </button>
-                    <button type="button" onClick={openReportModal} disabled={preparingReport}>
+                    <button type="button" onClick={openReportModal}>
                       <Flag size={14} /> Report issue
                     </button>
                     <Link href="/portal" onClick={() => setMenuOpen(false)}>
@@ -472,11 +414,10 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
             <button
               type="button"
               onClick={openReportModal}
-              disabled={preparingReport}
               className="btn-primary inline-flex items-center gap-1 text-xs nav:text-sm py-1.5 px-2 nav:px-3 shrink-0"
             >
               <Flag size={14} />
-              <span className="hidden nav:inline">{preparingReport ? "Capturing…" : "Report"}</span>
+              <span className="hidden nav:inline">Report</span>
             </button>
           </div>
 
@@ -604,11 +545,8 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
                     setSeverity={setSeverity}
                     screenshot={screenshot}
                     screenshotError={screenshotError}
-                    capturingScreenshot={capturingScreenshot}
                     fileInputRef={fileInputRef}
                     onUpload={applyUploadedImage}
-                    onRetryCapture={retryScreenshot}
-                    showRetryCapture={false}
                     onRemoveScreenshot={() => {
                       setScreenshot(null);
                       setScreenshotError(null);
@@ -687,11 +625,8 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
                 setSeverity={setSeverity}
                 screenshot={screenshot}
                 screenshotError={screenshotError}
-                capturingScreenshot={capturingScreenshot}
                 fileInputRef={fileInputRef}
                 onUpload={applyUploadedImage}
-                onRetryCapture={retryScreenshot}
-                showRetryCapture
                 onRemoveScreenshot={() => {
                   setScreenshot(null);
                   setScreenshotError(null);
@@ -716,11 +651,8 @@ function ReportForm({
   setSeverity,
   screenshot,
   screenshotError,
-  capturingScreenshot,
   fileInputRef,
   onUpload,
-  onRetryCapture,
-  showRetryCapture,
   onRemoveScreenshot,
   onSubmit,
   submitting,
@@ -733,11 +665,8 @@ function ReportForm({
   setSeverity: (v: string) => void;
   screenshot: string | null;
   screenshotError: string | null;
-  capturingScreenshot: boolean;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (file: File | null | undefined) => void;
-  onRetryCapture: () => void;
-  showRetryCapture: boolean;
   onRemoveScreenshot: () => void;
   onSubmit: (e: React.FormEvent) => void;
   submitting: boolean;
@@ -768,21 +697,18 @@ function ReportForm({
               role="tooltip"
               className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+6px)] z-10 w-56 rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-xs leading-relaxed text-[var(--text-muted)] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             >
-              Upload or paste a screenshot from the app tab, or submit without one.
+              Capture the app yourself, then upload or paste the image here. You can also submit
+              without a screenshot.
             </span>
           </span>
         </div>
         <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)]/50 overflow-hidden">
-          {capturingScreenshot && !screenshot ? (
-            <div className="flex items-center justify-center h-40 px-4 text-center text-sm text-[var(--text-muted)]">
-              Capturing screenshot…
-            </div>
-          ) : screenshot ? (
+          {screenshot ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={screenshot}
-                alt="Screenshot of the app at time of report"
+                alt="Screenshot attached to this report"
                 className="w-full max-h-56 object-contain object-top bg-black/20 mx-auto"
               />
               {screenshotError && (
@@ -795,27 +721,15 @@ function ReportForm({
             <div className="flex flex-col items-center justify-center gap-3 min-h-40 px-4 py-6 text-center text-sm">
               <p className="text-[var(--text-muted)] max-w-md">
                 {screenshotError ||
-                  "No screenshot yet. Upload, paste, or continue without one."}
+                  "Upload or paste a screenshot of the issue, or continue without one."}
               </p>
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                {showRetryCapture && (
-                  <button
-                    type="button"
-                    onClick={onRetryCapture}
-                    disabled={capturingScreenshot}
-                    className="btn-secondary text-xs py-1.5 px-3"
-                  >
-                    {capturingScreenshot ? "Capturing…" : "Retry capture"}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="btn-secondary text-xs py-1.5 px-3 inline-flex items-center gap-1.5"
-                >
-                  <Upload size={14} /> Upload
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="btn-secondary text-xs py-1.5 px-3 inline-flex items-center gap-1.5"
+              >
+                <Upload size={14} /> Upload
+              </button>
               <p className="text-xs text-[var(--text-muted)]">Or paste an image (Ctrl/⌘+V)</p>
             </div>
           )}

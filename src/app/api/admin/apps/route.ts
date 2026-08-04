@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { normalizeLaunchUrl } from "@/lib/launch-url";
 
 export async function GET() {
   try {
@@ -16,13 +17,20 @@ export async function POST(request: Request) {
   try {
     await requireAdmin();
     const body = await request.json();
+    const launchUrl = normalizeLaunchUrl(String(body.launchUrl ?? ""));
+    if (!launchUrl) {
+      return NextResponse.json(
+        { error: "Launch URL must be a valid https address (e.g. app.example.com)" },
+        { status: 400 }
+      );
+    }
 
     const app = await prisma.testApp.create({
       data: {
         name: body.name,
         description: body.description || "",
         iconUrl: body.iconUrl || null,
-        launchUrl: body.launchUrl,
+        launchUrl,
         internalAppId: body.internalAppId ? Number(body.internalAppId) : null,
         ndaText: body.ndaText || "",
         termsText: body.termsText || "",

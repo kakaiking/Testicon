@@ -2,23 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  measureDataUrlQuality,
-  pickBestCaptureFrame,
-  validateScreenshot,
-  type CapturedFrame,
-  type ScreenshotCaptureResult,
-} from "@/lib/capture-screen";
-import {
-  captureDomNodeWithTimeout,
-  findIframeCaptureRoot,
-} from "@/lib/dom-capture";
-import {
   EMBED_MESSAGE,
   buildContextMessage,
   embedLogoutKey,
   iframeSrcOrigin,
   type EmbedContextPayload,
-  type EmbedScreenshotPayload,
 } from "@/lib/embed-protocol";
 
 type LaunchData = {
@@ -26,11 +14,8 @@ type LaunchData = {
   context: EmbedContextPayload;
 };
 
-const SDK_CAPTURE_TIMEOUT_MS = 12000;
-
 /**
- * Bridge to an app loaded in the portal iframe.
- * Prefer same-origin proxy src so screenshots can capture the iframe DOM only.
+ * Bridge to an app loaded in the portal iframe (context delivery + logout).
  */
 export function useEmbedBridge(appId: string | null, iframeSrc: string | null) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -97,39 +82,6 @@ export function useEmbedBridge(appId: string | null, iframeSrc: string | null) {
 
   const resetSdkReady = useCallback(() => setSdkReady(false), []);
 
-  const requestScreenshot = useCallback(async (): Promise<ScreenshotCaptureResult> => {
-    const iframe = iframeRef.current;
-    if (!iframe?.contentWindow) {
-      return {
-        dataUrl: null,
-        error: "App frame is not ready yet. Wait for the app to load, or upload a screenshot instead.",
-      };
-    }
-
-    // Prefer direct DOM capture of the iframe document (iframe-only, no screen share).
-    // Proxy embedding makes this same-origin. Fall back to SDK if present.
-    const frames: Array<CapturedFrame | null> = [];
-
-    if (canReadIframeDocument(iframe)) {
-      frames.push(await captureDirectFromIframe(iframe));
-    }
-
-    if (!frames.some(Boolean) && allowedOrigin) {
-      frames.push(await captureViaEmbedSdk(iframe, allowedOrigin, SDK_CAPTURE_TIMEOUT_MS));
-    }
-
-    const best = pickBestCaptureFrame(frames.filter((f): f is CapturedFrame => !!f));
-    if (!best) {
-      console.warn("[Testicon] Screenshot capture failed — iframe DOM/SDK unavailable");
-      return {
-        dataUrl: null,
-        error: "Could not capture the app view. Upload or paste a screenshot, or submit without one.",
-      };
-    }
-
-    return validateScreenshot(best.dataUrl);
-  }, [allowedOrigin]);
-
   return {
     iframeRef,
     ready,
@@ -139,141 +91,5 @@ export function useEmbedBridge(appId: string | null, iframeSrc: string | null) {
     onIframeLoad,
     clearLoggedOut,
     resetSdkReady,
-    requestScreenshot,
   };
-}
-
-/** Capture iframe.contentDocument via modern-screenshot (same-origin only). */
-async function captureDirectFromIframe(iframe: HTMLIFrameElement): Promise<CapturedFrame | null> {
-  try {
-    const rootDoc = iframe.contentDocument;
-    if (!rootDoc?.documentElement) return null;
-
-    const { node, source } = findIframeCaptureRoot(rootDoc);
-    return captureDomNodeWithTimeout(node, `direct:${source}`);
-  } catch (err) {
-    console.warn("[Testicon] Direct iframe DOM capture failed:", err);
-    return null;
-  }
-}
-
-function canReadIframeDocument(iframe: HTMLIFrameElement): boolean {
-  try {
-    return !!iframe.contentDocument?.documentElement;
-  } catch {
-    return false;
-  }
-}
-
-/** Ask the embed SDK (running inside the iframe) to capture its own document. */
-async function captureViaEmbedSdk(
-  iframe: HTMLIFrameElement,
-  allowedOrigin: string,
-  timeoutMs: number
-): Promise<CapturedFrame | null> {
-  const requestId = crypto.randomUUID();
-  const targets: Window[] = [];
-
-  try {
-    walkFrameWindows(iframe.contentDocument, targets);
-  } catch {
-    // ignore
-  }
-
-  if (targets.length === 0 && iframe.contentWindow) {
-    targets.push(iframe.contentWindow);
-  }
-
-  const uniqueTargets = [...new Set(targets)];
-  if (uniqueTargets.length === 0) return null;
-
-  return new Promise<CapturedFrame | null>((resolve) => {
-    let settled = false;
-    let pending = uniqueTargets.length;
-    let best: CapturedFrame | null = null;
-
-    function finish(result: CapturedFrame | null) {
-      if (settled) return;
-
-      if (result) {
-        if (
-          !best ||
-          result.coverage > best.coverage ||
-          (result.coverage === best.coverage && result.variance > best.variance)
-        ) {
-          best = result;
-        }
-        if (result.coverage >= 0.22 && result.variance >= 8) {
-          settled = true;
-          cleanup();
-          resolve(result);
-          return;
-        }
-      }
-
-      pending--;
-      if (pending <= 0) {
-        settled = true;
-        cleanup();
-        resolve(best);
-      }
-    }
-
-    function cleanup() {
-      window.clearTimeout(timer);
-      window.removeEventListener("message", onScreenshot);
-    }
-
-    function onScreenshot(event: MessageEvent) {
-      if (event.origin !== allowedOrigin) return;
-      const data = event.data;
-      if (!data || data.type !== EMBED_MESSAGE.SCREENSHOT || data.requestId !== requestId) return;
-
-      const payload = data.payload as EmbedScreenshotPayload | undefined;
-      if (payload?.dataUrl) {
-        void measureDataUrlQuality(payload.dataUrl).then((score) => {
-          finish({
-            dataUrl: payload.dataUrl!,
-            variance: score.variance,
-            coverage: score.coverage,
-            source: "embed-sdk",
-          });
-        });
-        return;
-      }
-
-      if (payload?.error && payload.error !== "delegated") {
-        console.warn("[Testicon] SDK screenshot failed:", payload.error);
-      }
-      finish(null);
-    }
-
-    const timer = window.setTimeout(() => {
-      if (!settled) {
-        console.warn("[Testicon] SDK screenshot timed out");
-        settled = true;
-        cleanup();
-        resolve(best);
-      }
-    }, timeoutMs);
-
-    window.addEventListener("message", onScreenshot);
-
-    const message = { type: EMBED_MESSAGE.REQUEST_SCREENSHOT, version: 1, requestId };
-    for (const target of uniqueTargets) {
-      target.postMessage(message, allowedOrigin);
-    }
-  });
-}
-
-function walkFrameWindows(doc: Document | null | undefined, wins: Window[]) {
-  if (!doc) return;
-  if (doc.defaultView) wins.push(doc.defaultView);
-  for (const iframe of doc.querySelectorAll("iframe")) {
-    try {
-      if (iframe.contentDocument) walkFrameWindows(iframe.contentDocument, wins);
-    } catch {
-      // cross-origin
-    }
-  }
 }

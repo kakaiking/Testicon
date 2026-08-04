@@ -7,14 +7,7 @@ export const EMBED_MESSAGE = {
   CONTEXT: "testicon:context",
   LOGOUT: "testicon:logout",
   REQUEST_CONTEXT: "testicon:request-context",
-  REQUEST_SCREENSHOT: "testicon:request-screenshot",
-  SCREENSHOT: "testicon:screenshot",
 } as const;
-
-export type EmbedScreenshotPayload = {
-  dataUrl?: string;
-  error?: string;
-};
 
 export type EmbedTester = {
   id: string;
