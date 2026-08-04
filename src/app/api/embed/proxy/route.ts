@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     }
 
     const app = enrollment.testApp;
-    if (app.status !== "ACTIVE" || !isAppActive(app.startDate, app.endDate)) {
+    if (app.status === "CLOSED" || !isAppActive(app.startDate, app.endDate)) {
       return NextResponse.json({ error: "App unavailable" }, { status: 403 });
     }
 

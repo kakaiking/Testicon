@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
 
 type RewardData = {
@@ -48,15 +47,7 @@ export default function PortalRewardsPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-[var(--border-color)] bg-[var(--bg-secondary)]/80 px-4 nav:px-6 py-3 nav:py-4 flex items-center justify-between gap-3">
-        <Link href="/portal" className="flex items-center gap-2 min-w-0">
-          <span className="text-xl nav:text-2xl shrink-0">🧪</span>
-          <span className="font-heading font-bold text-base nav:text-lg truncate">Rewards</span>
-        </Link>
-        <Link href="/portal" className="btn-secondary text-sm shrink-0">← Apps</Link>
-      </header>
-      <div className="p-4 nav:p-6 max-w-2xl mx-auto space-y-4 nav:space-y-6">
+    <div className="max-w-2xl mx-auto space-y-4 nav:space-y-6">
         <div className="glass-card p-6 nav:p-8 text-center">
           <div className="text-[var(--text-muted)] text-sm">Available Balance</div>
           <div className="font-heading text-3xl nav:text-4xl font-bold text-[var(--accent-success)] mt-2">
@@ -103,7 +94,6 @@ export default function PortalRewardsPage() {
             )}
           </div>
         </div>
-      </div>
     </div>
   );
 }

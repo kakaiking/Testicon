@@ -219,9 +219,18 @@ export function TesterShell({
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-[var(--border-color)] bg-[var(--bg-secondary)]/80 backdrop-blur-xl px-4 nav:px-6 py-3 nav:py-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
+    <div className="min-h-screen flex flex-col nav:flex-row">
+      <ShellDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        brandHref="/portal"
+        nav={testerNav}
+        pathname={pathname}
+        user={user}
+        portal
+      />
+      <main className="flex-1 flex flex-col min-w-0 overflow-auto">
+        <header className="border-b border-[var(--border-color)] bg-[var(--bg-secondary)]/50 backdrop-blur-xl px-4 nav:px-8 py-3 nav:py-5 flex items-center gap-3">
           <button
             type="button"
             aria-label="Open menu"
@@ -231,94 +240,9 @@ export function TesterShell({
           >
             <Menu size={22} />
           </button>
-          <Link href="/portal" className="flex items-center gap-2 min-w-0">
-            <span className="text-2xl shrink-0">🧪</span>
-            <div className="font-heading font-bold text-base nav:text-lg truncate">Testicon</div>
-          </Link>
-        </div>
-        <div className="flex items-center gap-2 nav:gap-3 shrink-0">
-          <span className="text-sm text-[var(--text-muted)] hidden nav:inline truncate max-w-[12rem]">{user.email}</span>
-          <form action="/api/auth/logout" method="POST">
-            <button type="submit" className="btn-secondary text-sm py-2 px-3">Sign Out</button>
-          </form>
-        </div>
-      </header>
-
-      {drawerOpen && (
-        <button
-          type="button"
-          aria-label="Close menu"
-          className="shell-backdrop nav:hidden"
-          onClick={() => setDrawerOpen(false)}
-        />
-      )}
-      <aside
-        className={`shell-drawer nav:hidden ${drawerOpen ? "shell-drawer-open" : ""}`}
-        aria-hidden={!drawerOpen}
-      >
-        <div className="p-4 border-b border-[var(--border-color)] flex items-center justify-between">
-          <span className="font-heading font-semibold">Menu</span>
-          <button
-            type="button"
-            aria-label="Close menu"
-            className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-white/5"
-            onClick={() => setDrawerOpen(false)}
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {testerNav.map(({ href, label, icon: Icon }) => {
-            const active = navIsActive(pathname, href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={() => setDrawerOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-white/10 text-[var(--text-main)]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-white/5"
-                }`}
-              >
-                <Icon size={18} />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="p-3 border-t border-[var(--border-color)]">
-          <div className="text-sm text-[var(--text-muted)] truncate px-3">{user.email}</div>
-        </div>
-      </aside>
-
-      <nav className="hidden nav:flex items-center gap-1 px-6 py-2 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]/40">
-        {testerNav.map(({ href, label, icon: Icon }) => {
-          const active = navIsActive(pathname, href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                active
-                  ? "bg-white/10 text-[var(--text-main)]"
-                  : "text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-white/5"
-              }`}
-            >
-              <Icon size={16} />
-              {label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <main className="flex-1">
-        {title && (
-          <div className="px-4 nav:px-6 py-4 nav:py-5 border-b border-[var(--border-color)]">
-            <h1 className="font-heading text-xl nav:text-2xl font-bold">{title}</h1>
-          </div>
-        )}
-        <div className="p-4 nav:p-6">{children}</div>
+          <h1 className="font-heading text-xl nav:text-2xl font-bold truncate">{title || "My Test Apps"}</h1>
+        </header>
+        <div className="p-4 nav:p-8 flex-1">{children}</div>
       </main>
     </div>
   );

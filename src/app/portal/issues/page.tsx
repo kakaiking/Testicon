@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
 
 type Issue = {
@@ -22,15 +21,7 @@ export default function PortalIssuesPage() {
   }, []);
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-[var(--border-color)] bg-[var(--bg-secondary)]/80 px-4 nav:px-6 py-3 nav:py-4 flex items-center justify-between gap-3">
-        <Link href="/portal" className="flex items-center gap-2 min-w-0">
-          <span className="text-xl nav:text-2xl shrink-0">🧪</span>
-          <span className="font-heading font-bold text-base nav:text-lg truncate">My Issues</span>
-        </Link>
-        <Link href="/portal" className="btn-secondary text-sm shrink-0">← Apps</Link>
-      </header>
-      <div className="p-4 nav:p-6 max-w-3xl mx-auto space-y-3 nav:space-y-4">
+    <div className="max-w-3xl mx-auto space-y-3 nav:space-y-4">
         {issues.map((t) => (
           <div key={t.id} className="glass-card p-4 nav:p-5">
             <div className="flex items-center gap-2 mb-1">
@@ -49,7 +40,6 @@ export default function PortalIssuesPage() {
             No issues yet. Launch an app and use Report Issue to submit bugs.
           </div>
         )}
-      </div>
     </div>
   );
 }
