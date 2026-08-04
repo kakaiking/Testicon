@@ -6,6 +6,7 @@ import {
   buildContextMessage,
   embedLogoutKey,
   iframeSrcOrigin,
+  launchUrlOrigin,
   type EmbedContextPayload,
 } from "@/lib/embed-protocol";
 
@@ -14,17 +15,26 @@ type LaunchData = {
   context: EmbedContextPayload;
 };
 
+function originFromLaunchOrSrc(url: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return launchUrlOrigin(url);
+  }
+  return iframeSrcOrigin(url);
+}
+
 /**
- * Bridge to an app loaded in the portal iframe (context delivery + logout).
+ * Optional postMessage bridge to an app loaded at its real launchUrl.
+ * Testicon does not proxy or rewrite the app — only talks if the app embeds the SDK.
  */
-export function useEmbedBridge(appId: string | null, iframeSrc: string | null) {
+export function useEmbedBridge(appId: string | null, launchUrl: string | null) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const contextRef = useRef<EmbedContextPayload | null>(null);
   const [loggedOut, setLoggedOut] = useState(false);
   const [ready, setReady] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
 
-  const allowedOrigin = iframeSrc ? iframeSrcOrigin(iframeSrc) : null;
+  const allowedOrigin = originFromLaunchOrSrc(launchUrl);
 
   const deliverContext = useCallback(() => {
     const iframe = iframeRef.current;

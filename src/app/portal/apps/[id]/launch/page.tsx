@@ -8,7 +8,6 @@ import {
   Flag,
   Info,
   LogIn,
-  MoreHorizontal,
   Pause,
   Play,
   RefreshCw,
@@ -17,7 +16,12 @@ import {
 } from "lucide-react";
 import { useEmbedBridge } from "@/lib/use-embed-bridge";
 import { clearLegacyLaunchMode } from "@/lib/embed-check";
-import { looksLikeSignInUrl, readIframeUrl, resolveProxiedAppUrl } from "@/lib/signin-detect";
+import { launchUrlOrigin } from "@/lib/embed-protocol";
+import {
+  looksLikeSignInUrl,
+  readIframeUrl,
+  watchSignInNavigations,
+} from "@/lib/signin-detect";
 import SeveritySelect from "@/components/SeveritySelect";
 import RichTextEditor, { isEmptyHtml } from "@/components/RichTextEditor";
 
@@ -53,7 +57,6 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
   const [briefingPaused, setBriefingPaused] = useState(false);
   const [iframeLoading, setIframeLoading] = useState(true);
   const [iframeKey, setIframeKey] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [signInModal, setSignInModal] = useState<{ url: string } | null>(null);
   const signInPromptedRef = useRef(false);
 
@@ -68,10 +71,8 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const proxySrc = appId
-    ? `/api/embed/proxy?testAppId=${encodeURIComponent(appId)}`
-    : null;
-  const bridge = useEmbedBridge(appId, proxySrc);
+  // Direct launchUrl only — no proxy / rewrite middleware.
+  const bridge = useEmbedBridge(appId, launchData?.app.launchUrl ?? null);
   const {
     bindLaunchData,
     iframeRef,
@@ -134,38 +135,24 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
     if (signInPromptedRef.current) return;
     signInPromptedRef.current = true;
     setSignInModal({ url });
-    setMenuOpen(false);
   }, [phase]);
 
   useEffect(() => {
     if (!launchData || phase === "briefing" || phase === "report") return;
-
-    // Same-origin proxy: poll the iframe location for sign-in pages.
-    const tick = window.setInterval(() => {
-      const href = resolveProxiedAppUrl(
-        readIframeUrl(iframeRef.current),
-        launchData.app.launchUrl
-      );
-      if (href && looksLikeSignInUrl(href)) {
-        promptSignIn(href);
-      }
-    }, 1200);
-
-    return () => window.clearInterval(tick);
-  }, [launchData, phase, promptSignIn, iframeRef]);
+    const origin = launchUrlOrigin(launchData.app.launchUrl);
+    if (!origin) return;
+    return watchSignInNavigations(origin, promptSignIn);
+  }, [launchData, phase, promptSignIn]);
 
   const handleIframeLoad = useCallback(() => {
     setIframeLoading(false);
     onIframeLoad();
 
-    const href = resolveProxiedAppUrl(
-      readIframeUrl(iframeRef.current),
-      launchData?.app.launchUrl ?? null
-    );
+    const href = readIframeUrl(iframeRef.current);
     if (href && looksLikeSignInUrl(href)) {
       promptSignIn(href);
     }
-  }, [onIframeLoad, iframeRef, launchData, promptSignIn]);
+  }, [onIframeLoad, iframeRef, promptSignIn]);
 
   const refreshIframe = useCallback(() => {
     resetSdkReady();
@@ -181,7 +168,6 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
       if (!launchData) return;
       window.open(url || launchData.app.launchUrl, "_blank", "noopener,noreferrer");
       setSignInModal(null);
-      setMenuOpen(false);
       setPhase("report");
       setShowReportForm(true);
       setScreenshot(null);
@@ -227,10 +213,9 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
     setScreenshotError(
       phase === "report"
         ? "Take a screenshot in the app tab, then upload or paste it here — or submit without one."
-        : "Take a screenshot of the app, then upload or paste it here — or submit without one."
+        : "Take a screenshot of the app, then upload it here."
     );
     setShowReportForm(true);
-    setMenuOpen(false);
   }, [phase]);
 
   function closeReportForm() {
@@ -372,44 +357,15 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
               <RefreshCw size={16} className={iframeLoading ? "animate-spin" : ""} />
             </button>
 
-            <div className="relative">
-              <button
-                type="button"
-                className="iab-icon-btn"
-                onClick={() => setMenuOpen((o) => !o)}
-                aria-label="Menu"
-                aria-expanded={menuOpen}
-              >
-                <MoreHorizontal size={18} />
-              </button>
-              {menuOpen && (
-                <>
-                  <button
-                    type="button"
-                    className="fixed inset-0 z-40 cursor-default"
-                    aria-label="Close menu"
-                    onClick={() => setMenuOpen(false)}
-                  />
-                  <div className="iab-menu z-50">
-                    <button type="button" onClick={openExternally}>
-                      <ExternalLink size={14} /> Open in new tab
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => promptSignIn(launchData.app.launchUrl)}
-                    >
-                      <LogIn size={14} /> Sign-in help
-                    </button>
-                    <button type="button" onClick={openReportModal}>
-                      <Flag size={14} /> Report issue
-                    </button>
-                    <Link href="/portal" onClick={() => setMenuOpen(false)}>
-                      <ArrowLeft size={14} /> Back to portal
-                    </Link>
-                  </div>
-                </>
-              )}
-            </div>
+            <button
+              type="button"
+              className="iab-icon-btn"
+              onClick={openExternally}
+              aria-label="Open in new tab"
+              title="Open in new tab"
+            >
+              <ExternalLink size={16} />
+            </button>
 
             <button
               type="button"
@@ -455,7 +411,7 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
           <iframe
             key={iframeKey}
             ref={iframeRef}
-            src={proxySrc ?? undefined}
+            src={launchData.app.launchUrl}
             className="iframe-content"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
             referrerPolicy="strict-origin-when-cross-origin"
@@ -730,7 +686,6 @@ function ReportForm({
               >
                 <Upload size={14} /> Upload
               </button>
-              <p className="text-xs text-[var(--text-muted)]">Or paste an image (Ctrl/⌘+V)</p>
             </div>
           )}
         </div>
