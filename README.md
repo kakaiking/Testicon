@@ -112,12 +112,13 @@ Any app can run inside Testicon's iframe shell — no special casing per app. In
 
 ### How it works
 
-1. Testicon loads your app's `launchUrl` as-is (no session data in the URL).
-2. If your app includes the embed SDK, it sends `testicon:ready`.
-3. Testicon responds with a **short-lived launch token** (15 min) and tester identity via postMessage.
-4. If the tester logs out inside your app, call `TesticonEmbed.notifyLogout()` — Testicon won't re-send identity until they click **Continue with Testicon**.
+1. Testicon opens your app's **real** `launchUrl` in an in-app browser shell (no reverse proxy, no HTML rewriting).
+2. If a sign-in page is detected, Testicon shows a modal offering to open sign-in in a new tab (login cookies are blocked inside embedded views).
+3. If your app includes the embed SDK, it sends `testicon:ready`.
+4. Testicon responds with a **short-lived launch token** (15 min) and tester identity via postMessage.
+5. If the tester logs out inside your app, call `TesticonEmbed.notifyLogout()` — Testicon won't re-send identity until they click **Continue with Testicon**.
 
-Apps that don't include the SDK behave normally: testers use the app's own login.
+Apps that don't include the SDK behave normally: testers use the app's own login. Screenshots are optional (SDK capture, upload, or paste).
 
 ### Client SDK
 

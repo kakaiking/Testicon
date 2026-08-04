@@ -37,7 +37,7 @@ export default function HomePage() {
 
         <div className="grid nav:grid-cols-2 gap-4 nav:gap-6 mt-12 nav:mt-20 max-w-5xl w-full">
           {[
-            { icon: FlaskConical, title: "App Testing", desc: "Launch apps in iframes with back & report controls" },
+            { icon: FlaskConical, title: "App Testing", desc: "Launch apps in an in-app browser with report controls" },
             { icon: Shield, title: "NDA & Terms", desc: "Per-app agreements before testers access apps" },
             { icon: CircleAlert, title: "Issue Reports", desc: "Structured issues synced to Internal-App" },
             { icon: Wallet, title: "Rewards", desc: "Pay testers by issue severity, withdraw when approved" },

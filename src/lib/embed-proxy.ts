@@ -44,22 +44,74 @@ function proxiedRelativePath(launchUrl: string, resolvedAbsoluteUrl: string): st
   return rel || "index.html";
 }
 
-export function toProxiedPath(
+/** Paths on the Testicon host that must not be rewritten to the embedded app. */
+const TESTICON_OWNED_PATH_PREFIXES = [
+  "/api/embed/",
+  "/embed-sdk.js",
+  "/modern-screenshot.js",
+];
+
+export function isTesticonOwnedPath(pathname: string): boolean {
+  return TESTICON_OWNED_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+export function resolveEmbeddedAbsoluteUrl(
   launchUrl: string,
   absoluteOrRelativeUrl: string,
-  documentBaseHref?: string
+  documentBaseHref?: string,
+  proxyOrigin?: string
 ): string | null {
   if (!absoluteOrRelativeUrl || absoluteOrRelativeUrl.startsWith("data:") || absoluteOrRelativeUrl.startsWith("blob:")) {
     return null;
   }
 
   try {
-    const resolveBase = documentBaseHref || baseHrefForLaunchUrl(launchUrl);
-    const resolved = new URL(absoluteOrRelativeUrl, resolveBase).href;
-    return proxiedRelativePath(launchUrl, resolved);
+    const launchOrigin = new URL(launchUrl).origin;
+    let resolved: string;
+
+    if (absoluteOrRelativeUrl.startsWith("http://") || absoluteOrRelativeUrl.startsWith("https://")) {
+      resolved = absoluteOrRelativeUrl;
+    } else if (absoluteOrRelativeUrl.startsWith("/")) {
+      resolved = `${launchOrigin}${absoluteOrRelativeUrl}`;
+    } else {
+      const resolveBase = documentBaseHref || baseHrefForLaunchUrl(launchUrl);
+      resolved = new URL(absoluteOrRelativeUrl, resolveBase).href;
+    }
+
+    if (proxyOrigin && resolved.startsWith(proxyOrigin)) {
+      const path = resolved.slice(proxyOrigin.length);
+      if (isTesticonOwnedPath(path)) return null;
+      resolved = `${launchOrigin}${path}`;
+    }
+
+    if (!resolved.startsWith(launchOrigin)) return null;
+    return resolved;
   } catch {
     return null;
   }
+}
+
+export function toProxiedPath(
+  launchUrl: string,
+  absoluteOrRelativeUrl: string,
+  documentBaseHref?: string
+): string | null {
+  const resolved = resolveEmbeddedAbsoluteUrl(launchUrl, absoluteOrRelativeUrl, documentBaseHref);
+  if (!resolved) return null;
+  return proxiedRelativePath(launchUrl, resolved);
+}
+
+function rewriteCssUrls(css: string, cssBaseUrl: string): string {
+  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (match, quote, urlPath) => {
+    const trimmed = urlPath.trim();
+    if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) return match;
+    try {
+      const absolute = new URL(trimmed, cssBaseUrl).href;
+      return `url(${quote}${absolute}${quote})`;
+    } catch {
+      return match;
+    }
+  });
 }
 
 export function rewriteIframeSrcInHtml(
@@ -136,11 +188,43 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
   var LAUNCH_BASE = ${launchBase};
   var PROXY_BASE = ${proxyBaseJson};
 
-  function toProxiedPath(url) {
+  var TESTICON_OWNED = ${JSON.stringify(TESTICON_OWNED_PATH_PREFIXES)};
+
+  function isTesticonOwnedPath(pathname) {
+    for (var i = 0; i < TESTICON_OWNED.length; i++) {
+      if (pathname.indexOf(TESTICON_OWNED[i]) === 0) return true;
+    }
+    return false;
+  }
+
+  function resolveEmbeddedAbsoluteUrl(url) {
     if (!url || url.indexOf("data:") === 0 || url.indexOf("blob:") === 0) return null;
     try {
-      var resolved = new URL(url, document.baseURI || LAUNCH_BASE).href;
+      var resolved;
+      if (url.indexOf("http://") === 0 || url.indexOf("https://") === 0) {
+        resolved = url;
+      } else if (url.indexOf("/") === 0) {
+        resolved = LAUNCH_ORIGIN + url;
+      } else {
+        resolved = new URL(url, document.baseURI || LAUNCH_BASE).href;
+      }
+      var proxyOrigin = window.location.origin;
+      if (resolved.indexOf(proxyOrigin) === 0) {
+        var path = resolved.slice(proxyOrigin.length);
+        if (isTesticonOwnedPath(path)) return null;
+        resolved = LAUNCH_ORIGIN + path;
+      }
       if (resolved.indexOf(LAUNCH_ORIGIN) !== 0) return null;
+      return resolved;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function toProxiedPath(url) {
+    var resolved = resolveEmbeddedAbsoluteUrl(url);
+    if (!resolved) return null;
+    try {
       var base = new URL(LAUNCH_BASE);
       var target = new URL(resolved);
       var rel = target.pathname;
@@ -207,6 +291,63 @@ export function buildEmbedBootstrapScript(launchUrl: string, proxyBase: string):
 
   patchNavigation();
 
+  function patchElementAttr(proto, attr) {
+    if (!proto) return;
+    var desc = Object.getOwnPropertyDescriptor(proto, attr);
+    if (!desc || !desc.set) return;
+    Object.defineProperty(proto, attr, {
+      get: desc.get,
+      set: function (val) {
+        desc.set.call(this, proxyUrl(String(val)));
+      },
+      configurable: true,
+    });
+  }
+
+  function patchNetwork() {
+    var origFetch = window.fetch;
+    if (origFetch) {
+      window.fetch = function (input, init) {
+        var url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input && input.url
+                ? input.url
+                : String(input);
+        var proxied = proxyUrl(url);
+        if (proxied !== url) {
+          if (typeof input === "string" || input instanceof URL) return origFetch(proxied, init);
+          return origFetch(new Request(proxied, input), init);
+        }
+        return origFetch(input, init);
+      };
+    }
+
+    var origOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      var args = Array.prototype.slice.call(arguments);
+      if (typeof url === "string") {
+        var proxied = proxyUrl(url);
+        if (proxied !== url) args[1] = proxied;
+      }
+      return origOpen.apply(this, args);
+    };
+
+    patchElementAttr(HTMLScriptElement.prototype, "src");
+    patchElementAttr(HTMLLinkElement.prototype, "href");
+
+    var origSetAttribute = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name, value) {
+      var attr = String(name).toLowerCase();
+      if (attr === "src" || attr === "href") value = proxyUrl(String(value));
+      return origSetAttribute.call(this, name, value);
+    };
+  }
+
+  patchNetwork();
+
   function bindTesticonEmbed() {
     if (!window.TesticonEmbed) return false;
     window.TesticonEmbed.onContext(function (ctx) {
@@ -237,11 +378,43 @@ export function buildIframeHookScript(launchUrl: string, proxyBase: string): str
   var LAUNCH_BASE = ${launchBase};
   var PROXY_BASE = ${proxyBaseJson};
 
-  function toProxiedPath(url) {
+  var TESTICON_OWNED = ${JSON.stringify(TESTICON_OWNED_PATH_PREFIXES)};
+
+  function isTesticonOwnedPath(pathname) {
+    for (var i = 0; i < TESTICON_OWNED.length; i++) {
+      if (pathname.indexOf(TESTICON_OWNED[i]) === 0) return true;
+    }
+    return false;
+  }
+
+  function resolveEmbeddedAbsoluteUrl(url) {
     if (!url || url.indexOf("data:") === 0 || url.indexOf("blob:") === 0) return null;
     try {
-      var resolved = new URL(url, document.baseURI || LAUNCH_BASE).href;
+      var resolved;
+      if (url.indexOf("http://") === 0 || url.indexOf("https://") === 0) {
+        resolved = url;
+      } else if (url.indexOf("/") === 0) {
+        resolved = LAUNCH_ORIGIN + url;
+      } else {
+        resolved = new URL(url, document.baseURI || LAUNCH_BASE).href;
+      }
+      var proxyOrigin = window.location.origin;
+      if (resolved.indexOf(proxyOrigin) === 0) {
+        var path = resolved.slice(proxyOrigin.length);
+        if (isTesticonOwnedPath(path)) return null;
+        resolved = LAUNCH_ORIGIN + path;
+      }
       if (resolved.indexOf(LAUNCH_ORIGIN) !== 0) return null;
+      return resolved;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function toProxiedPath(url) {
+    var resolved = resolveEmbeddedAbsoluteUrl(url);
+    if (!resolved) return null;
+    try {
       var base = new URL(LAUNCH_BASE);
       var target = new URL(resolved);
       var rel = target.pathname;
@@ -367,7 +540,7 @@ export async function inlineLaunchStylesheets(
       const cssUrl = new URL(href, baseHref).href;
       const response = await fetch(cssUrl, { headers: { Accept: "text/css,*/*" } });
       if (!response.ok) continue;
-      const css = await response.text();
+      const css = rewriteCssUrls(await response.text(), cssUrl);
       result = result.replace(match[0], `<style data-inlined-from="${href}">\n${css}\n</style>`);
     } catch {
       // keep external link if fetch fails

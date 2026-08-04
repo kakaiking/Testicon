@@ -26,13 +26,18 @@ type LaunchData = {
   context: EmbedContextPayload;
 };
 
-const SDK_CAPTURE_TIMEOUT_MS = 15000;
+const SDK_CAPTURE_TIMEOUT_MS = 12000;
 
+/**
+ * Bridge to an app loaded in the portal iframe.
+ * Prefer same-origin proxy src so screenshots can capture the iframe DOM only.
+ */
 export function useEmbedBridge(appId: string | null, iframeSrc: string | null) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const contextRef = useRef<EmbedContextPayload | null>(null);
   const [loggedOut, setLoggedOut] = useState(false);
   const [ready, setReady] = useState(false);
+  const [sdkReady, setSdkReady] = useState(false);
 
   const allowedOrigin = iframeSrc ? iframeSrcOrigin(iframeSrc) : null;
 
@@ -68,6 +73,7 @@ export function useEmbedBridge(appId: string | null, iframeSrc: string | null) {
       if (!data || typeof data.type !== "string") return;
 
       if (data.type === EMBED_MESSAGE.READY || data.type === EMBED_MESSAGE.REQUEST_CONTEXT) {
+        setSdkReady(true);
         if (!loggedOut) deliverContext();
       }
 
@@ -89,23 +95,35 @@ export function useEmbedBridge(appId: string | null, iframeSrc: string | null) {
     if (!loggedOut) deliverContext();
   }, [loggedOut, deliverContext]);
 
+  const resetSdkReady = useCallback(() => setSdkReady(false), []);
+
   const requestScreenshot = useCallback(async (): Promise<ScreenshotCaptureResult> => {
     const iframe = iframeRef.current;
-    if (!iframe?.contentWindow || !allowedOrigin) {
-      return { dataUrl: null, error: "App frame is not ready yet. Wait for the app to load, then try again." };
-    }
-
-    const [direct, fromSdk] = await Promise.all([
-      captureDirectFromIframe(iframe),
-      captureViaEmbedSdk(iframe, allowedOrigin, SDK_CAPTURE_TIMEOUT_MS),
-    ]);
-
-    const best = pickBestCaptureFrame([direct, fromSdk].filter((f): f is CapturedFrame => !!f));
-    if (!best) {
-      console.warn("[Testicon] Screenshot capture failed — no readable frame from iframe DOM capture");
+    if (!iframe?.contentWindow) {
       return {
         dataUrl: null,
-        error: "Could not capture the app view. Wait for the page to finish loading, then click Retry.",
+        error: "App frame is not ready yet. Wait for the app to load, or upload a screenshot instead.",
+      };
+    }
+
+    // Prefer direct DOM capture of the iframe document (iframe-only, no screen share).
+    // Proxy embedding makes this same-origin. Fall back to SDK if present.
+    const frames: Array<CapturedFrame | null> = [];
+
+    if (canReadIframeDocument(iframe)) {
+      frames.push(await captureDirectFromIframe(iframe));
+    }
+
+    if (!frames.some(Boolean) && allowedOrigin) {
+      frames.push(await captureViaEmbedSdk(iframe, allowedOrigin, SDK_CAPTURE_TIMEOUT_MS));
+    }
+
+    const best = pickBestCaptureFrame(frames.filter((f): f is CapturedFrame => !!f));
+    if (!best) {
+      console.warn("[Testicon] Screenshot capture failed — iframe DOM/SDK unavailable");
+      return {
+        dataUrl: null,
+        error: "Could not capture the app view. Upload or paste a screenshot, or submit without one.",
       };
     }
 
@@ -115,10 +133,12 @@ export function useEmbedBridge(appId: string | null, iframeSrc: string | null) {
   return {
     iframeRef,
     ready,
+    sdkReady,
     loggedOut,
     bindLaunchData,
     onIframeLoad,
     clearLoggedOut,
+    resetSdkReady,
     requestScreenshot,
   };
 }
@@ -134,6 +154,14 @@ async function captureDirectFromIframe(iframe: HTMLIFrameElement): Promise<Captu
   } catch (err) {
     console.warn("[Testicon] Direct iframe DOM capture failed:", err);
     return null;
+  }
+}
+
+function canReadIframeDocument(iframe: HTMLIFrameElement): boolean {
+  try {
+    return !!iframe.contentDocument?.documentElement;
+  } catch {
+    return false;
   }
 }
 
@@ -168,7 +196,11 @@ async function captureViaEmbedSdk(
       if (settled) return;
 
       if (result) {
-        if (!best || result.coverage > best.coverage || (result.coverage === best.coverage && result.variance > best.variance)) {
+        if (
+          !best ||
+          result.coverage > best.coverage ||
+          (result.coverage === best.coverage && result.variance > best.variance)
+        ) {
           best = result;
         }
         if (result.coverage >= 0.22 && result.variance >= 8) {

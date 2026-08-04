@@ -77,7 +77,7 @@ export default function NewAppPage() {
               <IconUpload value={form.iconUrl} onChange={(url) => update("iconUrl", url)} />
             </div>
             <div>
-              <label className="label">Launch URL (iframe src)</label>
+              <label className="label">Launch URL</label>
               <input className="input-field" value={form.launchUrl} onChange={(e) => update("launchUrl", e.target.value)} required placeholder="https://..." />
             </div>
           </div>
