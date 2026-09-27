@@ -1,24 +1,31 @@
 import type { Metadata } from "next";
-import { Outfit, Inter } from "next/font/google";
+import { Syne, DM_Sans, JetBrains_Mono } from "next/font/google";
+import { SnackbarProvider } from "@/components/Snackbar";
 import "./globals.css";
 
-const outfit = Outfit({
+const syne = Syne({
   variable: "--font-heading",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
 });
 
-const inter = Inter({
+const dmSans = DM_Sans({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
   title: "Testicon — Software Testing Portal",
   description: "Invite testers, launch apps, report issues, and reward quality feedback.",
   icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧪</text></svg>",
+    icon: "/brand-mark.svg",
   },
 };
 
@@ -26,14 +33,15 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${outfit.variable} ${inter.variable} h-full`}>
+    <html
+      lang="en"
+      className={`${syne.variable} ${dmSans.variable} ${jetbrainsMono.variable} h-full`}
+    >
       <body className="min-h-full antialiased relative">
-        <div className="glow-bg">
-          <div className="blob blob1" />
-          <div className="blob blob2" />
-          <div className="blob blob3" />
+        <div className="atmosphere" aria-hidden="true" />
+        <div className="relative z-10">
+          <SnackbarProvider>{children}</SnackbarProvider>
         </div>
-        <div className="relative z-10">{children}</div>
       </body>
     </html>
   );

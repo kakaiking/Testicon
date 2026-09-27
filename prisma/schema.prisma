@@ -47,16 +47,18 @@ model TestApp {
 }
 
 model Invitation {
-  id         String    @id @default(cuid())
-  email      String
-  token      String    @unique
-  testAppId  String
-  status     String    @default("PENDING") // PENDING | ACCEPTED | EXPIRED | REVOKED
-  invitedBy  String
-  expiresAt  DateTime
-  acceptedAt DateTime?
-  deletedAt  DateTime?
-  createdAt  DateTime  @default(now())
+  id          String    @id @default(cuid())
+  email       String
+  token       String    @unique
+  testAppId   String
+  status      String    @default("PENDING") // PENDING | ACCEPTED | EXPIRED | REVOKED
+  invitedBy   String
+  expiresAt   DateTime
+  accessStart DateTime?
+  accessEnd   DateTime?
+  acceptedAt  DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
 
   testApp TestApp @relation(fields: [testAppId], references: [id], onDelete: Cascade)
   inviter User    @relation("InvitedBy", fields: [invitedBy], references: [id])
@@ -69,6 +71,8 @@ model TesterEnrollment {
   ndaAcceptedAt     DateTime?
   termsAcceptedAt   DateTime?
   understandingText String?
+  accessStart       DateTime?
+  accessEnd         DateTime?
   status            String    @default("INVITED") // INVITED | REGISTERED | NDA_SIGNED | UNDERSTANDING_SUBMITTED | ACTIVE
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

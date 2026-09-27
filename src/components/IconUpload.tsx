@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useSnackbar } from "@/components/Snackbar";
 
 type IconUploadProps = {
   value: string;
@@ -8,35 +9,40 @@ type IconUploadProps = {
 };
 
 export default function IconUpload({ value, onChange }: IconUploadProps) {
+  const snackbar = useSnackbar();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setError("");
     setUploading(true);
 
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await fetch("/api/admin/upload/icon", {
-      method: "POST",
-      body: formData,
-    });
+    try {
+      const res = await fetch("/api/admin/upload/icon", {
+        method: "POST",
+        body: formData,
+      });
 
-    const data = await res.json();
-    setUploading(false);
+      const data = await res.json();
 
-    if (!res.ok) {
-      setError(data.error || "Upload failed");
-      return;
+      if (!res.ok) {
+        snackbar.error(data.error || "Upload failed");
+        return;
+      }
+
+      onChange(data.url);
+      snackbar.success("Icon uploaded");
+      if (inputRef.current) inputRef.current.value = "";
+    } catch {
+      snackbar.error("Upload failed");
+    } finally {
+      setUploading(false);
     }
-
-    onChange(data.url);
-    if (inputRef.current) inputRef.current.value = "";
   }
 
   return (
@@ -44,6 +50,7 @@ export default function IconUpload({ value, onChange }: IconUploadProps) {
       <div className="flex items-center gap-4">
         <div className="w-16 h-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] flex items-center justify-center overflow-hidden shrink-0">
           {value ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={value} alt="App icon preview" className="w-full h-full object-cover" />
           ) : (
             <span className="text-xs text-[var(--text-muted)]">No icon</span>
@@ -61,8 +68,7 @@ export default function IconUpload({ value, onChange }: IconUploadProps) {
           <p className="text-xs text-[var(--text-muted)] mt-1">JPEG, PNG, WebP, or GIF · max 2 MB</p>
         </div>
       </div>
-      {uploading && <p className="text-xs text-[var(--text-muted)]">Uploading...</p>}
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {uploading && <p className="text-xs text-[var(--text-muted)]">Uploading…</p>}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { formatCurrency } from "@/lib/utils";
+import { useSnackbar } from "@/components/Snackbar";
 
 type RewardData = {
   balance: number;
@@ -18,82 +19,122 @@ type RewardData = {
 };
 
 export default function PortalRewardsPage() {
+  const snackbar = useSnackbar();
   const [data, setData] = useState<RewardData | null>(null);
   const [amount, setAmount] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
+  const [flash, setFlash] = useState(false);
 
   function load() {
-    fetch("/api/portal/rewards").then((r) => r.json()).then(setData);
+    fetch("/api/portal/rewards")
+      .then((r) => r.json())
+      .then(setData);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function withdraw(e: React.FormEvent) {
     e.preventDefault();
     setWithdrawing(true);
-    const res = await fetch("/api/portal/rewards", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: Number(amount) }),
-    });
-    if (res.ok) {
-      setAmount("");
-      load();
-    } else {
-      const err = await res.json();
-      alert(err.error || "Withdrawal failed");
+    try {
+      const res = await fetch("/api/portal/rewards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: Number(amount) }),
+      });
+      if (res.ok) {
+        setAmount("");
+        setFlash(true);
+        window.setTimeout(() => setFlash(false), 1200);
+        load();
+        snackbar.success("Cash out requested");
+      } else {
+        const err = await res.json();
+        snackbar.error(err.error || "Cash out failed");
+      }
+    } catch {
+      snackbar.error("Cash out failed");
+    } finally {
+      setWithdrawing(false);
     }
-    setWithdrawing(false);
   }
 
+  const pending = Math.max(0, (data?.balance ?? 0) - (data?.available ?? 0));
+
   return (
-    <div className="max-w-2xl mx-auto space-y-4 nav:space-y-6">
-        <div className="glass-card p-6 nav:p-8 text-center">
-          <div className="text-[var(--text-muted)] text-sm">Available Balance</div>
-          <div className="font-heading text-3xl nav:text-4xl font-bold text-[var(--accent-success)] mt-2">
-            {formatCurrency(data?.available ?? 0)}
-          </div>
-        </div>
-
-        <form onSubmit={withdraw} className="glass-card p-4 nav:p-6 space-y-4">
-          <h2 className="font-heading font-semibold">Withdraw Rewards</h2>
+    <div className="wallet-page max-w-md mx-auto">
+      <div className={`wallet-hero ${flash ? "wallet-hero-flash" : ""}`}>
+        <p className="font-mono text-[0.65rem] tracking-[0.16em] text-[var(--sodium)]">AVAILABLE</p>
+        <p className="wallet-balance font-heading">{formatCurrency(data?.available ?? 0)}</p>
+        <div className="wallet-split">
           <div>
-            <label className="label">Amount (KSh)</label>
-            <input
-              className="input-field"
-              type="number"
-              step="0.01"
-              min="0"
-              max={data?.available ?? 0}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-            />
+            <span className="access-pass-key">Pending</span>
+            <p className="font-mono text-sm mt-0.5">{formatCurrency(pending)}</p>
           </div>
-          <button type="submit" className="btn-primary w-full" disabled={withdrawing || !amount}>
-            {withdrawing ? "Processing..." : "Request Withdrawal"}
-          </button>
-        </form>
-
-        <div className="glass-card overflow-hidden">
-          <div className="p-4 border-b border-[var(--border-color)] font-heading font-semibold">History</div>
-          <div className="divide-y divide-[var(--border-color)]">
-            {data?.rewards.map((r) => (
-              <div key={r.id} className="p-3 nav:p-4 flex flex-col nav:flex-row nav:justify-between nav:items-center gap-2">
-                <div>
-                  <div className="text-sm">{r.issue?.title || r.description}</div>
-                  <span className={`badge badge-${r.status.toLowerCase()} text-xs mt-1`}>{r.status}</span>
-                </div>
-                <span className={`font-semibold ${r.type === "CREDIT" ? "text-[var(--accent-success)]" : "text-[var(--accent-warning)]"}`}>
-                  {r.type === "CREDIT" ? "+" : "-"}{formatCurrency(r.amount)}
-                </span>
-              </div>
-            ))}
-            {!data?.rewards.length && (
-              <div className="p-8 text-center text-[var(--text-muted)]">No rewards yet</div>
-            )}
+          <div className="text-right">
+            <span className="access-pass-key">Ledger</span>
+            <p className="font-mono text-sm mt-0.5">{formatCurrency(data?.balance ?? 0)}</p>
           </div>
         </div>
+      </div>
+
+      <form onSubmit={withdraw} className="wallet-cashout">
+        <label className="label" htmlFor="cashout-amount">
+          Cash out (KSh)
+        </label>
+        <input
+          id="cashout-amount"
+          className="input-field font-mono"
+          type="number"
+          step="0.01"
+          min="0"
+          max={data?.available ?? 0}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0.00"
+        />
+        <button
+          type="submit"
+          className="btn-primary w-full mt-3"
+          disabled={withdrawing || !amount || Number(amount) <= 0}
+        >
+          {withdrawing ? "Sending…" : "Cash out"}
+        </button>
+      </form>
+
+      <div className="wallet-ledger">
+        <h2 className="font-heading font-semibold text-base mb-2">History</h2>
+        <div className="wallet-ledger-list">
+          {data?.rewards.map((r) => (
+            <div key={r.id} className="wallet-ledger-row">
+              <div className="min-w-0">
+                <p className="text-sm truncate">{r.issue?.title || r.description || "Reward"}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`badge badge-${r.status.toLowerCase()} text-xs`}>{r.status}</span>
+                  <span className="font-mono text-[0.65rem] text-[var(--text-muted)]">
+                    {new Date(r.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+              <span
+                className={`font-mono font-semibold shrink-0 ${
+                  r.type === "CREDIT" ? "text-[var(--accent-success)]" : "text-[var(--accent-warning)]"
+                }`}
+              >
+                {r.type === "CREDIT" ? "+" : "−"}
+                {formatCurrency(r.amount)}
+              </span>
+            </div>
+          ))}
+          {!data?.rewards.length && (
+            <p className="text-center text-sm text-[var(--text-muted)] py-8">
+              No ledger entries yet — log hits to earn.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   Flag,
   Info,
   LogIn,
+  MoreHorizontal,
   Pause,
   Play,
   RefreshCw,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/signin-detect";
 import SeveritySelect from "@/components/SeveritySelect";
 import RichTextEditor, { isEmptyHtml } from "@/components/RichTextEditor";
+import { useSnackbar } from "@/components/Snackbar";
 
 type LaunchData = {
   app: { id: string; name: string; launchUrl: string };
@@ -49,6 +51,7 @@ function hostnameOf(url: string) {
 }
 
 export default function LaunchPage({ params }: { params: Promise<{ id: string }> }) {
+  const snackbar = useSnackbar();
   const [appId, setAppId] = useState<string | null>(null);
   const [launchData, setLaunchData] = useState<LaunchData | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -61,6 +64,7 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
   const signInPromptedRef = useRef(false);
 
   const [showReportForm, setShowReportForm] = useState(false);
+  const [chromeMenuOpen, setChromeMenuOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState("");
@@ -70,6 +74,7 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
   const [submitted, setSubmitted] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chromeMenuRef = useRef<HTMLDivElement>(null);
 
   // Direct launchUrl only — no proxy / rewrite middleware.
   const bridge = useEmbedBridge(appId, launchData?.app.launchUrl ?? null);
@@ -121,6 +126,24 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
       setPhase("browser");
     }
   }, [phase, briefingLeftMs]);
+
+  useEffect(() => {
+    if (!chromeMenuOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      if (!chromeMenuRef.current?.contains(e.target as Node)) {
+        setChromeMenuOpen(false);
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setChromeMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [chromeMenuOpen]);
 
   const skipBriefing = useCallback(() => {
     setPhase("browser");
@@ -229,30 +252,42 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
 
   async function submitReport(e: React.FormEvent) {
     e.preventDefault();
-    if (!launchData || !title.trim() || isEmptyHtml(description) || !severity) return;
-    setSubmitting(true);
-    const res = await fetch("/api/portal/issues", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        testAppId: launchData.app.id,
-        title,
-        description,
-        severity,
-        screenshot,
-      }),
-    });
-    if (res.ok) {
-      setSubmitted(true);
-      setTitle("");
-      setDescription("");
-      setScreenshot(null);
-      setTimeout(() => {
-        closeReportForm();
-        setSubmitted(false);
-      }, 2000);
+    if (!launchData || !title.trim() || isEmptyHtml(description) || !severity) {
+      snackbar.error("Add a title, description, and severity");
+      return;
     }
-    setSubmitting(false);
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/portal/issues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          testAppId: launchData.app.id,
+          title,
+          description,
+          severity,
+          screenshot,
+        }),
+      });
+      if (res.ok) {
+        setSubmitted(true);
+        setTitle("");
+        setDescription("");
+        setScreenshot(null);
+        snackbar.success("Hit logged");
+        setTimeout(() => {
+          closeReportForm();
+          setSubmitted(false);
+        }, 2000);
+      } else {
+        const data = await res.json().catch(() => null);
+        snackbar.error(data?.error || "Couldn’t log hit");
+      }
+    } catch {
+      snackbar.error("Couldn’t log hit");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (loadError) {
@@ -334,46 +369,66 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
         </div>
       )}
 
-      {/* ── Browser chrome ── */}
+      {/* ── Browser chrome —— Close · title · Report (+ overflow) ── */}
       {showBrowserChrome && (
         <>
           <div className="iab-chrome">
-            <Link href="/portal" className="iab-icon-btn" aria-label="Close" title="Back to portal">
+            <Link href="/portal" className="iab-icon-btn" aria-label="Close" title="Back to apps">
               <X size={18} />
             </Link>
 
             <div className="iab-url-bar" title={launchData.app.launchUrl}>
-              <span className="iab-host truncate">{host}</span>
-              <span className="iab-app-name truncate">{launchData.app.name}</span>
+              <span className="iab-host truncate">{launchData.app.name}</span>
+              <span className="iab-app-name truncate">{host}</span>
+            </div>
+
+            <div className="relative shrink-0" ref={chromeMenuRef}>
+              <button
+                type="button"
+                className="iab-icon-btn"
+                aria-label="More actions"
+                aria-expanded={chromeMenuOpen}
+                aria-haspopup="menu"
+                onClick={() => setChromeMenuOpen((o) => !o)}
+              >
+                <MoreHorizontal size={18} />
+              </button>
+              {chromeMenuOpen && (
+                <div className="iab-menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setChromeMenuOpen(false);
+                      refreshIframe();
+                    }}
+                  >
+                    <RefreshCw size={14} className={iframeLoading ? "animate-spin" : ""} />
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setChromeMenuOpen(false);
+                      openExternally();
+                    }}
+                  >
+                    <ExternalLink size={14} />
+                    Open in new tab
+                  </button>
+                </div>
+              )}
             </div>
 
             <button
               type="button"
-              className="iab-icon-btn"
-              onClick={refreshIframe}
-              aria-label="Refresh"
-              title="Refresh"
-            >
-              <RefreshCw size={16} className={iframeLoading ? "animate-spin" : ""} />
-            </button>
-
-            <button
-              type="button"
-              className="iab-icon-btn"
-              onClick={openExternally}
-              aria-label="Open in new tab"
-              title="Open in new tab"
-            >
-              <ExternalLink size={16} />
-            </button>
-
-            <button
-              type="button"
               onClick={openReportModal}
-              className="btn-primary inline-flex items-center gap-1 text-xs nav:text-sm py-1.5 px-2 nav:px-3 shrink-0"
+              className="iab-report-btn"
+              aria-label="Log hit"
             >
               <Flag size={14} />
-              <span className="hidden nav:inline">Report</span>
+              <span>Report</span>
             </button>
           </div>
 
@@ -466,7 +521,7 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
                     className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2"
                     onClick={openReportModal}
                   >
-                    <Flag size={14} /> Report issue
+                    <Flag size={14} /> Log hit
                   </button>
                 )}
               </div>
@@ -483,12 +538,12 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
                 >
                   <X size={16} strokeWidth={2.25} />
                 </button>
-                {submitted ? (
+            {submitted ? (
                   <div className="text-center py-8">
-                    <div className="text-4xl mb-3">✓</div>
-                    <h3 className="font-heading font-semibold text-lg">Issue Reported</h3>
+                    <p className="font-mono text-xs tracking-[0.16em] text-[var(--trace)] mb-2">HIT LOGGED</p>
+                    <h3 className="font-heading font-semibold text-lg">It&apos;s in review</h3>
                     <p className="text-[var(--text-muted)] text-sm mt-2">
-                      Thank you — the admin team will review it.
+                      Admins will check severity and rewards.
                     </p>
                   </div>
                 ) : (
@@ -550,47 +605,66 @@ export default function LaunchPage({ params }: { params: Promise<{ id: string }>
         </div>
       )}
 
-      {/* ── Report modal while still in browser phase ── */}
+      {/* ── Report sheet while still in browser phase ── */}
       {showReportForm && phase === "browser" && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end nav:items-center justify-center p-0 nav:p-4">
-          <div className="glass-card p-4 nav:p-6 w-full nav:w-[70%] max-w-full nav:max-w-[70vw] max-h-[90vh] overflow-y-auto rounded-t-2xl nav:rounded-2xl relative">
-            <button
-              type="button"
-              onClick={closeReportForm}
-              disabled={submitting}
-              aria-label="Close"
-              className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-colors hover:bg-white/10 hover:text-[var(--text-primary)] disabled:opacity-50"
-            >
-              <X size={16} strokeWidth={2.25} />
-            </button>
-            {submitted ? (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-3">✓</div>
-                <h3 className="font-heading font-semibold text-lg">Issue Reported</h3>
-                <p className="text-[var(--text-muted)] text-sm mt-2">
-                  Thank you — the admin team will review it.
-                </p>
-              </div>
-            ) : (
-              <ReportForm
-                title={title}
-                setTitle={setTitle}
-                description={description}
-                setDescription={setDescription}
-                severity={severity}
-                setSeverity={setSeverity}
-                screenshot={screenshot}
-                screenshotError={screenshotError}
-                fileInputRef={fileInputRef}
-                onUpload={applyUploadedImage}
-                onRemoveScreenshot={() => {
-                  setScreenshot(null);
-                  setScreenshotError(null);
-                }}
-                onSubmit={submitReport}
-                submitting={submitting}
-              />
-            )}
+        <div className="report-sheet-root">
+          <button
+            type="button"
+            className="report-sheet-backdrop"
+            aria-label="Dismiss report"
+            onClick={() => !submitting && closeReportForm()}
+          />
+          <div
+            className="report-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="report-sheet-title"
+          >
+            <div className="report-sheet-handle" aria-hidden />
+            <div className="report-sheet-header">
+              <h2 id="report-sheet-title" className="font-heading font-semibold text-lg">
+                Log hit
+              </h2>
+              <button
+                type="button"
+                onClick={closeReportForm}
+                disabled={submitting}
+                aria-label="Close"
+                className="iab-icon-btn"
+              >
+                <X size={16} strokeWidth={2.25} />
+              </button>
+            </div>
+            <div className="report-sheet-body">
+              {submitted ? (
+                <div className="text-center py-8">
+                  <p className="font-mono text-xs tracking-[0.16em] text-[var(--trace)] mb-2">HIT LOGGED</p>
+                  <h3 className="font-heading font-semibold text-lg">It&apos;s in review</h3>
+                  <p className="text-[var(--text-muted)] text-sm mt-2">
+                    Admins will check severity and rewards.
+                  </p>
+                </div>
+              ) : (
+                <ReportForm
+                  title={title}
+                  setTitle={setTitle}
+                  description={description}
+                  setDescription={setDescription}
+                  severity={severity}
+                  setSeverity={setSeverity}
+                  screenshot={screenshot}
+                  screenshotError={screenshotError}
+                  fileInputRef={fileInputRef}
+                  onUpload={applyUploadedImage}
+                  onRemoveScreenshot={() => {
+                    setScreenshot(null);
+                    setScreenshotError(null);
+                  }}
+                  onSubmit={submitReport}
+                  submitting={submitting}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -743,7 +817,7 @@ function ReportForm({
         className="btn-primary w-full"
         disabled={submitting || !severity}
       >
-        {submitting ? "Submitting..." : "Submit Report"}
+        {submitting ? "Logging…" : "Log hit"}
       </button>
     </form>
   );

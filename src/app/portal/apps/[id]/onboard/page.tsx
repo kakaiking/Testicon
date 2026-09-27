@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { useSnackbar } from "@/components/Snackbar";
 
 type AppData = {
   id: string;
@@ -10,11 +12,23 @@ type AppData = {
   ndaText: string;
   termsText: string;
   description: string | null;
-  enrollment: { status: string; ndaAcceptedAt: string | null; termsAcceptedAt: string | null; understandingText: string | null };
+  enrollment: {
+    status: string;
+    ndaAcceptedAt: string | null;
+    termsAcceptedAt: string | null;
+    understandingText: string | null;
+  };
 };
+
+const STEP_META = [
+  { key: 1, label: "NDA", title: "Before you go in", cta: "Agree" },
+  { key: 2, label: "Terms", title: "House rules", cta: "Agree" },
+  { key: 3, label: "Brief", title: "Your understanding", cta: "Enter apps" },
+] as const;
 
 export default function OnboardPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const snackbar = useSnackbar();
   const [appId, setAppId] = useState("");
   const [app, setApp] = useState<AppData | null>(null);
   const [step, setStep] = useState(1);
@@ -40,97 +54,153 @@ export default function OnboardPage({ params }: { params: Promise<{ id: string }
 
   async function complete() {
     setLoading(true);
-    await fetch("/api/portal/enrollment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        testAppId: appId,
-        ndaAccepted: step >= 1 && ndaAccepted,
-        termsAccepted: step >= 2 && termsAccepted,
-        understandingText: step >= 3 ? understanding : undefined,
-      }),
-    });
-
-    if (step < 3) {
-      setStep(step + 1);
-      setLoading(false);
-    } else {
-      await fetch("/api/portal/enrollment", {
+    try {
+      const res = await fetch("/api/portal/enrollment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ testAppId: appId, ndaAccepted: true, termsAccepted: true, understandingText: understanding }),
+        body: JSON.stringify({
+          testAppId: appId,
+          ndaAccepted: step >= 1 && ndaAccepted,
+          termsAccepted: step >= 2 && termsAccepted,
+          understandingText: step >= 3 ? understanding : undefined,
+        }),
       });
-      router.push("/portal");
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        snackbar.error(data?.error || "Couldn’t save this step");
+        setLoading(false);
+        return;
+      }
+
+      if (step < 3) {
+        setStep(step + 1);
+        snackbar.success(step === 1 ? "NDA accepted" : "Terms accepted");
+        setLoading(false);
+      } else {
+        await fetch("/api/portal/enrollment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            testAppId: appId,
+            ndaAccepted: true,
+            termsAccepted: true,
+            understandingText: understanding,
+          }),
+        });
+        snackbar.success("Setup complete");
+        router.push("/portal");
+      }
+    } catch {
+      snackbar.error("Couldn’t save this step");
+      setLoading(false);
     }
   }
 
-  if (!app) return <div className="min-h-screen flex items-center justify-center text-[var(--text-muted)]">Loading...</div>;
+  if (!app) {
+    return (
+      <div className="onboard-shell items-center justify-center text-[var(--text-muted)] font-mono text-sm">
+        Loading…
+      </div>
+    );
+  }
+
+  const meta = STEP_META[step - 1];
+  const canContinue =
+    (step === 1 && ndaAccepted) ||
+    (step === 2 && termsAccepted) ||
+    (step === 3 && understanding.trim().length > 0);
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 nav:px-6 py-4 nav:py-0">
-      <div className="glass-card p-4 nav:p-8 w-full nav:w-[70%] max-w-3xl nav:h-[80%] min-h-[70vh] nav:min-h-0 flex flex-col">
-        <Link href="/portal" className="text-sm text-[var(--text-muted)] hover:text-[var(--text-main)]">← Back to apps</Link>
-        <div className="flex gap-2 mt-4 mb-8">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className={`h-1 flex-1 rounded ${s <= step ? "bg-[var(--accent)]" : "bg-[var(--border-color)]"}`} />
-          ))}
-        </div>
+    <div className="onboard-shell">
+      <div className="onboard-progress" aria-hidden>
+        {STEP_META.map((s) => (
+          <div
+            key={s.key}
+            className={`onboard-progress-seg ${s.key <= step ? "onboard-progress-seg-on" : ""}`}
+          />
+        ))}
+      </div>
 
+      <header className="onboard-header">
+        <Link href="/portal" className="iab-icon-btn" aria-label="Back to apps">
+          <ArrowLeft size={18} />
+        </Link>
+        <div className="min-w-0 text-center flex-1">
+          <p className="font-mono text-[0.65rem] tracking-[0.14em] text-[var(--accent)]">
+            {meta.label} · {app.name}
+          </p>
+          <h1 className="font-heading font-bold text-lg truncate">{meta.title}</h1>
+        </div>
+        <span className="w-9" aria-hidden />
+      </header>
+
+      <div className="onboard-body">
         {step === 1 && (
-          <div className="space-y-4 flex-1 flex flex-col min-h-0">
-            <h2 className="font-heading font-semibold text-center">Non-Disclosure Agreement</h2>
+          <>
             <div
-              className="bg-white/5 rounded-lg p-4 text-sm flex-1 min-h-0 overflow-y-auto rich-text-display"
+              className="onboard-scroll rich-text-display"
               dangerouslySetInnerHTML={{ __html: app.ndaText }}
             />
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={ndaAccepted} onChange={(e) => setNdaAccepted(e.target.checked)} className="w-4 h-4" />
+            <label className="onboard-check">
+              <input
+                type="checkbox"
+                checked={ndaAccepted}
+                onChange={(e) => setNdaAccepted(e.target.checked)}
+              />
               <span>I agree to the NDA</span>
             </label>
-          </div>
+          </>
         )}
 
         {step === 2 && (
-          <div className="space-y-4 flex-1 flex flex-col min-h-0">
-            <h2 className="font-heading font-semibold text-center">Terms of Agreement</h2>
+          <>
             <div
-              className="bg-white/5 rounded-lg p-4 text-sm flex-1 min-h-0 overflow-y-auto rich-text-display"
+              className="onboard-scroll rich-text-display"
               dangerouslySetInnerHTML={{ __html: app.termsText }}
             />
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="w-4 h-4" />
+            <label className="onboard-check">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+              />
               <span>I accept the terms</span>
             </label>
-          </div>
+          </>
         )}
 
         {step === 3 && (
-          <div className="space-y-4 flex-1 flex flex-col min-h-0">
-            <h2 className="font-heading font-semibold text-center">Your Understanding</h2>
-            <p className="text-sm text-[var(--text-muted)]">Describe what you understand this app does and what you&apos;ll be testing.</p>
+          <>
+            <p className="text-sm text-[var(--text-muted)] mb-3">
+              In your words — what does this app do, and what will you test?
+            </p>
             {app.description && (
               <div
-                className="bg-white/5 rounded-lg p-4 text-sm rich-text-display"
+                className="onboard-scroll rich-text-display mb-3"
+                style={{ maxHeight: "8rem" }}
                 dangerouslySetInnerHTML={{ __html: app.description }}
               />
             )}
             <textarea
-              className="input-field flex-1 min-h-0"
-              rows={5}
+              className="input-field onboard-textarea"
               value={understanding}
               onChange={(e) => setUnderstanding(e.target.value)}
-              placeholder="I understand that this app is..."
+              placeholder="I understand that this app is…"
               required
             />
-          </div>
+          </>
         )}
+      </div>
 
+      <div className="onboard-footer">
         <button
+          type="button"
           onClick={complete}
-          disabled={loading || (step === 1 && !ndaAccepted) || (step === 2 && !termsAccepted) || (step === 3 && !understanding.trim())}
-          className="btn-primary w-full mt-6 shrink-0"
+          disabled={loading || !canContinue}
+          className="btn-primary w-full"
         >
-          {loading ? "Saving..." : step === 3 ? "Complete Setup" : "Continue"}
+          {loading ? "Saving…" : meta.cta}
         </button>
       </div>
     </div>

@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { injectEmbedSupport, inlineLaunchStylesheets, resolveProxiedTargetUrl } from "@/lib/embed-proxy";
 import { isPrivateNetworkUrl } from "@/lib/private-network";
-import { isAppActive } from "@/lib/utils";
+import { isEnrollmentInWindow } from "@/lib/utils";
 
 export async function GET(req: Request) {
   try {
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     }
 
     const app = enrollment.testApp;
-    if (app.status === "CLOSED" || !isAppActive(app.startDate, app.endDate)) {
+    if (app.status === "CLOSED" || !isEnrollmentInWindow(enrollment, app)) {
       return NextResponse.json({ error: "App unavailable" }, { status: 403 });
     }
 

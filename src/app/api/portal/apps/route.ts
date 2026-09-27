@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { filterAccessibleEnrollments } from "@/lib/tester-access";
-import { isAppActive } from "@/lib/utils";
+import { isEnrollmentInWindow } from "@/lib/utils";
 
 export async function GET() {
   try {
@@ -23,7 +23,7 @@ export async function GET() {
         termsAcceptedAt: e.termsAcceptedAt,
         understandingText: e.understandingText,
       },
-      isActive: isAppActive(e.testApp.startDate, e.testApp.endDate),
+      isActive: isEnrollmentInWindow(e, e.testApp),
     }));
 
     return NextResponse.json(apps);

@@ -3,13 +3,16 @@
 import { useState, useEffect, useRef } from "react";
 import { Mail, Send, UserX, RotateCw, Trash2, MoreVertical } from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { useSnackbar } from "@/components/Snackbar";
 
-type TestApp = { id: string; name: string };
+type TestApp = { id: string; name: string; startDate: string; endDate: string };
 type Invitation = {
   id: string;
   email: string;
   status: string;
   createdAt: string;
+  accessStart: string | null;
+  accessEnd: string | null;
   testApp: { name: string };
 };
 
@@ -123,15 +126,17 @@ function InvitationActionsMenu({
 }
 
 export default function AdminTestersPage() {
+  const snackbar = useSnackbar();
   const [apps, setApps] = useState<TestApp[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [email, setEmail] = useState("");
   const [testAppId, setTestAppId] = useState("");
+  const [accessStart, setAccessStart] = useState("");
+  const [accessEnd, setAccessEnd] = useState("");
   const [sending, setSending] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   async function refreshInvitations() {
@@ -151,28 +156,36 @@ export default function AdminTestersPage() {
     refreshInvitations();
   }, []);
 
+  function selectApp(id: string) {
+    setTestAppId(id);
+    const app = apps.find((a) => a.id === id);
+    if (!app) return;
+    setAccessStart(app.startDate.slice(0, 10));
+    setAccessEnd(app.endDate.slice(0, 10));
+  }
+
   async function sendInvite(e: React.FormEvent) {
     e.preventDefault();
     setSending(true);
-    setMessage(null);
     const res = await fetch("/api/admin/invitations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, testAppId }),
+      body: JSON.stringify({ email, testAppId, accessStart, accessEnd }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setEmail("");
       setTestAppId("");
+      setAccessStart("");
+      setAccessEnd("");
       await refreshInvitations();
-      setMessage({
-        type: "success",
-        text: data.emailPreview
-          ? `Invitation saved. Email preview logged to server console (EmailJS not configured).`
-          : `Invitation sent to ${data.email}.`,
-      });
+      snackbar.success(
+        data.emailPreview
+          ? "Invitation saved. Email preview logged to server console (EmailJS not configured)."
+          : `Invitation sent to ${data.email}.`
+      );
     } else {
-      setMessage({ type: "error", text: data.error || "Failed to send invitation." });
+      snackbar.error(data.error || "Failed to send invitation.");
     }
     setSending(false);
   }
@@ -181,7 +194,6 @@ export default function AdminTestersPage() {
     if (inv.status === "REVOKED") return;
 
     setRevokingId(inv.id);
-    setMessage(null);
     const res = await fetch(`/api/admin/invitations/${inv.id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -191,16 +203,15 @@ export default function AdminTestersPage() {
         )
       );
       await refreshInvitations();
-      setMessage({ type: "success", text: `Access revoked for ${inv.email}.` });
+      snackbar.success(`Access revoked for ${inv.email}.`);
     } else {
-      setMessage({ type: "error", text: data.error || "Failed to revoke access." });
+      snackbar.error(data.error || "Failed to revoke access.");
     }
     setRevokingId(null);
   }
 
   async function resendInvite(inv: Invitation) {
     setResendingId(inv.id);
-    setMessage(null);
     const res = await fetch(`/api/admin/invitations/${inv.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -220,16 +231,15 @@ export default function AdminTestersPage() {
           ? `Access reminder sent to ${inv.email}.`
           : `Invitation resent to ${inv.email}.`;
       }
-      setMessage({ type: "success", text });
+      snackbar.success(text);
     } else {
-      setMessage({ type: "error", text: data.error || "Failed to resend invitation." });
+      snackbar.error(data.error || "Failed to resend invitation.");
     }
     setResendingId(null);
   }
 
   async function deleteInvite(inv: Invitation) {
     setDeletingId(inv.id);
-    setMessage(null);
     const res = await fetch(`/api/admin/invitations/${inv.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -238,9 +248,9 @@ export default function AdminTestersPage() {
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       await refreshInvitations();
-      setMessage({ type: "success", text: `Invitation removed from list.` });
+      snackbar.success("Invitation removed from list.");
     } else {
-      setMessage({ type: "error", text: data.error || "Failed to delete invitation." });
+      snackbar.error(data.error || "Failed to delete invitation.");
     }
     setDeletingId(null);
   }
@@ -348,19 +358,34 @@ export default function AdminTestersPage() {
             </div>
             <div>
               <label className="label">App</label>
-              <select className="input-field" value={testAppId} onChange={(e) => setTestAppId(e.target.value)} required>
+              <select className="input-field" value={testAppId} onChange={(e) => selectApp(e.target.value)} required>
                 <option value="">Select app...</option>
                 {apps.map((a) => (
                   <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
               </select>
             </div>
+            <div>
+              <label className="label">Access Start</label>
+              <input
+                className="input-field"
+                type="date"
+                value={accessStart}
+                onChange={(e) => setAccessStart(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="label">Access End</label>
+              <input
+                className="input-field"
+                type="date"
+                value={accessEnd}
+                onChange={(e) => setAccessEnd(e.target.value)}
+                required
+              />
+            </div>
           </div>
-          {message && (
-            <p className={`text-sm ${message.type === "success" ? "text-emerald-400" : "text-red-400"}`}>
-              {message.text}
-            </p>
-          )}
           <div className="flex justify-center">
             <button type="submit" className="btn-primary inline-flex items-center gap-2" disabled={sending}>
               <Mail size={16} /> {sending ? "Sending..." : "Send Invite"}
@@ -376,6 +401,12 @@ export default function AdminTestersPage() {
                 <div className="min-w-0">
                   <div className="font-medium truncate">{inv.email}</div>
                   <div className="text-sm text-[var(--text-muted)] truncate">{inv.testApp.name}</div>
+                  {inv.accessStart && inv.accessEnd && (
+                    <div className="text-xs text-[var(--text-muted)] font-mono mt-0.5">
+                      {new Date(inv.accessStart).toLocaleDateString()} –{" "}
+                      {new Date(inv.accessEnd).toLocaleDateString()}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 shrink-0 self-end nav:self-auto">
                   <span className={`badge badge-${inv.status.toLowerCase()}`}>{inv.status}</span>

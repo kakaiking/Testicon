@@ -6,9 +6,9 @@ import { TesterShell } from "@/components/Shell";
 import type { SessionUser } from "@/lib/auth";
 
 function getTitle(pathname: string): string {
-  if (pathname === "/portal") return "My Test Apps";
-  if (pathname === "/portal/issues") return "My Issues";
-  if (pathname === "/portal/rewards") return "Rewards";
+  if (pathname === "/portal") return "Apps";
+  if (pathname === "/portal/issues") return "Hits";
+  if (pathname === "/portal/rewards") return "Wallet";
   return "Testicon";
 }
 

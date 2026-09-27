@@ -5,6 +5,7 @@ import Link from "next/link";
 import IconUpload from "@/components/IconUpload";
 import LaunchUrlInput from "@/components/LaunchUrlInput";
 import { normalizeLaunchUrl } from "@/lib/launch-url";
+import { useSnackbar } from "@/components/Snackbar";
 
 type App = {
   id: string;
@@ -25,6 +26,7 @@ type App = {
 };
 
 export default function EditAppPage({ params }: { params: Promise<{ id: string }> }) {
+  const snackbar = useSnackbar();
   const [appId, setAppId] = useState("");
   const [form, setForm] = useState<App | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,23 +56,34 @@ export default function EditAppPage({ params }: { params: Promise<{ id: string }
     if (!form) return;
     const launchUrl = normalizeLaunchUrl(form.launchUrl);
     if (!launchUrl) {
-      alert("Enter a valid launch URL (e.g. app.example.com)");
+      snackbar.error("Enter a valid launch URL (e.g. app.example.com)");
       return;
     }
     setSaving(true);
-    await fetch(`/api/admin/apps/${appId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, launchUrl }),
-    });
-    setSaving(false);
+    try {
+      const res = await fetch(`/api/admin/apps/${appId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, launchUrl }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        snackbar.error(data?.error || "Couldn’t save changes");
+        return;
+      }
+      snackbar.success("Changes saved");
+    } catch {
+      snackbar.error("Couldn’t save changes");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) return <div className="text-center text-[var(--text-muted)]">Loading...</div>;
   if (!form) return <div className="text-center">App not found</div>;
 
   function update(field: keyof App, value: string | number) {
-    setForm((f) => f ? { ...f, [field]: value } : f);
+    setForm((f) => (f ? { ...f, [field]: value } : f));
   }
 
   return (
@@ -101,7 +114,12 @@ export default function EditAppPage({ params }: { params: Promise<{ id: string }
           </div>
           <div>
             <label className="label">Internal-App ID</label>
-            <input className="input-field" type="number" value={form.internalAppId ?? ""} onChange={(e) => update("internalAppId", e.target.value ? Number(e.target.value) : "")} />
+            <input
+              className="input-field"
+              type="number"
+              value={form.internalAppId ?? ""}
+              onChange={(e) => update("internalAppId", e.target.value ? Number(e.target.value) : "")}
+            />
           </div>
           <div>
             <label className="label">Status</label>

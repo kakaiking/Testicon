@@ -1,55 +1,79 @@
 import Link from "next/link";
-import { ArrowRight, FlaskConical, Shield, CircleAlert, Wallet } from "lucide-react";
+import { ArrowRight, Shield } from "lucide-react";
+import { BrandWordmark } from "@/components/BrandMark";
+import { HeroTips } from "@/components/HeroTips";
+import { PhoneBooth } from "@/components/PhoneBooth";
+
+const raidSteps = [
+  { label: "INVITE", title: "Get on the list", body: "Admins shortlist testers. No public signup — if you’re here, you’re in." },
+  { label: "ENTER", title: "Open the booth", body: "Accept terms, launch the app in a secure in-app browser, keep Back and Report always handy." },
+  { label: "HIT", title: "Log what breaks", body: "Stamp severity, attach a screenshot, get paid when the hit is approved." },
+];
 
 export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="px-4 nav:px-8 py-4 nav:py-6 flex flex-col nav:flex-row nav:items-center nav:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl nav:text-3xl">🧪</span>
-          <span className="font-heading text-xl nav:text-2xl font-bold">Testicon</span>
-        </div>
-        <div className="flex flex-col nav:flex-row gap-2 nav:gap-3 w-full nav:w-auto">
-          <Link href="/login" className="btn-secondary text-center">Tester Sign In</Link>
-          <Link href="/admin/login" className="btn-primary text-center">Admin Portal</Link>
+      <header className="px-4 nav:px-8 py-4 nav:py-5 flex items-center justify-between gap-4">
+        <Link href="/" className="inline-flex">
+          <BrandWordmark size={26} />
+        </Link>
+        <div className="flex gap-2">
+          <Link href="/login" className="btn-secondary text-sm py-2 px-3 nav:px-4">
+            Sign in
+          </Link>
+          <Link href="/admin/login" className="btn-primary text-sm py-2 px-3 nav:px-4 hidden nav:inline-flex">
+            Admin
+          </Link>
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center px-4 nav:px-6 text-center">
-        <div className="max-w-3xl">
-          <h1 className="font-heading text-3xl nav:text-5xl font-extrabold mb-4 nav:mb-6 leading-tight">
-            Test smarter.<br />
-            <span className="text-[var(--accent)]">Reward better.</span>
-          </h1>
-          <p className="text-base nav:text-lg text-[var(--text-muted)] mb-8 nav:mb-10 max-w-xl mx-auto">
-            Testicon lets your team invite selected testers, launch internal apps in a secure shell,
-            collect structured bug reports, and pay rewards by severity.
+      <section className="landing-hero">
+        <div className="text-left">
+          <p className="font-mono text-xs tracking-[0.18em] text-[var(--accent)] mb-4">
+            INVITE-ONLY TESTING
           </p>
-          <div className="flex flex-col nav:flex-row gap-3 nav:gap-4 justify-center">
-            <Link href="/login" className="btn-primary inline-flex items-center justify-center gap-2 text-base nav:text-lg px-6 nav:px-8 py-3">
+          <h1 className="font-heading text-4xl nav:text-6xl font-extrabold leading-[1.05] tracking-tight mb-4">
+            Break it.
+            <br />
+            <span className="text-[var(--accent)]">Get paid.</span>
+          </h1>
+          <HeroTips />
+          <div className="flex flex-col nav:flex-row gap-3">
+            <Link
+              href="/login"
+              className="btn-primary inline-flex items-center justify-center gap-2 text-base px-6 py-3"
+            >
               I&apos;m a Tester <ArrowRight size={18} />
             </Link>
-            <Link href="/admin/login" className="btn-secondary inline-flex items-center justify-center gap-2 text-base nav:text-lg px-6 nav:px-8 py-3">
+            <Link
+              href="/admin/login"
+              className="btn-secondary inline-flex items-center justify-center gap-2 text-base px-6 py-3"
+            >
               <Shield size={18} /> Admin Console
             </Link>
           </div>
         </div>
 
-        <div className="grid nav:grid-cols-2 gap-4 nav:gap-6 mt-12 nav:mt-20 max-w-5xl w-full">
-          {[
-            { icon: FlaskConical, title: "App Testing", desc: "Launch apps in an in-app browser with report controls" },
-            { icon: Shield, title: "NDA & Terms", desc: "Per-app agreements before testers access apps" },
-            { icon: CircleAlert, title: "Issue Reports", desc: "Structured issues synced to Internal-App" },
-            { icon: Wallet, title: "Rewards", desc: "Pay testers by issue severity, withdraw when approved" },
-          ].map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="glass-card p-4 nav:p-6 text-left">
-              <Icon className="text-[var(--accent)] mb-3" size={24} />
-              <h3 className="font-heading font-semibold mb-2">{title}</h3>
-              <p className="text-sm text-[var(--text-muted)]">{desc}</p>
+        <PhoneBooth />
+      </section>
+
+      <section className="landing-below" aria-labelledby="raid-heading">
+        <h2 id="raid-heading" className="font-heading text-xl font-bold mb-2 tracking-tight">
+          How a raid works
+        </h2>
+        <p className="text-sm text-[var(--text-muted)] mb-2">
+          Three steps from invite to payout — same shape every time.
+        </p>
+        {raidSteps.map((step) => (
+          <div key={step.label} className="landing-step">
+            <span className="landing-step-label">{step.label}</span>
+            <div>
+              <h3 className="font-heading font-semibold text-[var(--text-main)]">{step.title}</h3>
+              <p className="text-sm text-[var(--text-muted)] mt-1">{step.body}</p>
             </div>
-          ))}
-        </div>
-      </main>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }

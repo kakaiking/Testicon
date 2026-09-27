@@ -6,8 +6,10 @@ import IconUpload from "@/components/IconUpload";
 import LaunchUrlInput from "@/components/LaunchUrlInput";
 import RichTextEditor from "@/components/RichTextEditor";
 import { normalizeLaunchUrl } from "@/lib/launch-url";
+import { useSnackbar } from "@/components/Snackbar";
 
 export default function NewAppPage() {
+  const snackbar = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -30,7 +32,7 @@ export default function NewAppPage() {
     e.preventDefault();
     const launchUrl = normalizeLaunchUrl(form.launchUrl);
     if (!launchUrl) {
-      alert("Enter a valid launch URL (e.g. app.example.com)");
+      snackbar.error("Enter a valid launch URL (e.g. app.example.com)");
       return;
     }
     setLoading(true);
@@ -42,14 +44,15 @@ export default function NewAppPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        alert(data?.error ?? "Failed to create app");
+        snackbar.error(data?.error ?? "Failed to create app");
         setLoading(false);
         return;
       }
+      snackbar.success("App created");
       // Full navigation — soft router.push can stall after client mutations.
       window.location.assign("/admin/apps");
     } catch {
-      alert("Failed to create app");
+      snackbar.error("Failed to create app");
       setLoading(false);
     }
   }

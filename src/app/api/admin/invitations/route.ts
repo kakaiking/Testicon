@@ -3,17 +3,32 @@ import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { sendInvitationEmail } from "@/lib/email";
 import { getAppUrl } from "@/lib/app-url";
-import { generateToken, getInvitationExpiresAt, getInvitationExpiryText } from "@/lib/utils";
+import {
+  generateToken,
+  getInvitationExpiresAt,
+  getInvitationExpiryText,
+  parseDateOnlyEnd,
+  parseDateOnlyStart,
+} from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
-    const { email, testAppId } = await request.json();
+    const { email, testAppId, accessStart, accessEnd } = await request.json();
 
     if (!email || !testAppId) {
       return NextResponse.json({ error: "Email and testAppId required" }, { status: 400 });
+    }
+    if (!accessStart || !accessEnd) {
+      return NextResponse.json({ error: "Access start and end dates required" }, { status: 400 });
+    }
+
+    const start = parseDateOnlyStart(String(accessStart));
+    const end = parseDateOnlyEnd(String(accessEnd));
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      return NextResponse.json({ error: "Invalid access window" }, { status: 400 });
     }
 
     const testApp = await prisma.testApp.findUnique({ where: { id: testAppId } });
@@ -23,16 +38,28 @@ export async function POST(request: Request) {
 
     const token = generateToken();
     const expiresAt = getInvitationExpiresAt();
+    const normalizedEmail = email.trim().toLowerCase();
 
     const invitation = await prisma.invitation.create({
       data: {
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         token,
         testAppId,
         invitedBy: admin.id,
         expiresAt,
+        accessStart: start,
+        accessEnd: end,
       },
     });
+
+    // Keep existing enrollments in sync so re-invites unlock without re-accept.
+    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (existingUser) {
+      await prisma.testerEnrollment.updateMany({
+        where: { userId: existingUser.id, testAppId },
+        data: { accessStart: start, accessEnd: end },
+      });
+    }
 
     const appUrl = getAppUrl();
     const inviteUrl = `${appUrl}/invite/${token}`;

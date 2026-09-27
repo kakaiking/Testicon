@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import Link from "next/link";
 import { Plus, ExternalLink } from "lucide-react";
 import { htmlToPlainText, formatAppStatus } from "@/lib/utils";
+import { BrandMark } from "@/components/BrandMark";
 
 export default async function AdminAppsPage() {
   const session = await getSession();
@@ -24,12 +25,12 @@ export default async function AdminAppsPage() {
         {apps.map((app) => (
           <div key={app.id} className="glass-card p-4 nav:p-6">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[var(--accent-glow)] flex items-center justify-center text-2xl shrink-0">
+              <div className="w-12 h-12 rounded-xl bg-[var(--accent-glow)] flex items-center justify-center shrink-0">
                 {app.iconUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={app.iconUrl} alt="" className="w-8 h-8 rounded" />
                 ) : (
-                  "🧪"
+                  <BrandMark size={24} className="text-[var(--text-main)]" />
                 )}
               </div>
               <div className="flex-1 min-w-0">

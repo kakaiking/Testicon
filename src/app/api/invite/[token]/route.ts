@@ -53,10 +53,19 @@ export async function POST(
     data: { status: "ACCEPTED", acceptedAt: new Date() },
   });
 
+  const accessStart = invitation.accessStart ?? invitation.testApp.startDate;
+  const accessEnd = invitation.accessEnd ?? invitation.testApp.endDate;
+
   await prisma.testerEnrollment.upsert({
     where: { userId_testAppId: { userId: user.id, testAppId: invitation.testAppId } },
-    update: { status: "REGISTERED" },
-    create: { userId: user.id, testAppId: invitation.testAppId, status: "REGISTERED" },
+    update: { status: "REGISTERED", accessStart, accessEnd },
+    create: {
+      userId: user.id,
+      testAppId: invitation.testAppId,
+      status: "REGISTERED",
+      accessStart,
+      accessEnd,
+    },
   });
 
   await createSession({
